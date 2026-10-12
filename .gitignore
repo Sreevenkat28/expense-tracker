@@ -8,8 +8,11 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
+# Allow the single-file production build (needed by Streamlit)
+dist/assets
+dist/*.svg
+dist/*.png
 *.local
 
 # Editor directories and files
