@@ -4,9 +4,9 @@ from pathlib import Path
 
 # ─── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Expense Calculator",
+    page_title="Expense Tracker — Pro Dashboard",
     page_icon="💳",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 
@@ -22,13 +22,13 @@ if dist_index.exists():
         header[data-testid="stHeader"] { display: none !important; }
         footer { display: none !important; }
         #MainMenu { visibility: hidden; }
-        iframe { border: none !important; width: 100% !important; }
+        iframe { border: none !important; width: 100% !important; min-height: 100vh; }
         </style>
         """,
         unsafe_allow_html=True,
     )
     html_code = dist_index.read_text(encoding="utf-8")
-    components.html(html_code, height=1100, scrolling=True)
+    components.html(html_code, height=1350, scrolling=True)
 
 else:
     # ─── Fallback: Pure Streamlit interface ──────────────────────────────────
@@ -54,8 +54,8 @@ else:
     if "expenses" not in st.session_state:
         st.session_state.expenses = []
 
-    # ── Step 1: Set Money ─────────────────────────────────────────────────────
-    st.markdown("### Step 1 — How much money do you have?")
+    # ── Budget Allocation ─────────────────────────────────────────────────────
+    st.markdown("### 💰 Set Budget & Available Funds")
     col_amt, col_btn = st.columns([3, 1])
     with col_amt:
         money_input = st.number_input(
@@ -65,7 +65,7 @@ else:
             placeholder="Enter your total money (e.g. 500.00)"
         )
     with col_btn:
-        if st.button("✅ Set", use_container_width=True):
+        if st.button("✅ Set Budget", use_container_width=True):
             st.session_state.starting_cents = to_cents(money_input)
             st.rerun()
 
@@ -83,10 +83,10 @@ else:
     # ── Summary Cards ─────────────────────────────────────────────────────────
     if starting > 0:
         c1, c2, c3 = st.columns(3)
-        c1.metric("💰 You Have", fmt(starting))
+        c1.metric("💰 Total Budget", fmt(starting))
         c2.metric("💸 Total Spent", fmt(total_spent))
         delta_color = "inverse" if remaining < 0 else "normal"
-        c3.metric("✅ Remaining", fmt(remaining), delta_color=delta_color)
+        c3.metric("✅ Remaining Balance", fmt(remaining), delta_color=delta_color)
 
         # Status message
         if remaining < 0:
@@ -100,8 +100,8 @@ else:
         st.progress(pct / 100.0)
         st.divider()
 
-    # ── Step 2: Add Expense ───────────────────────────────────────────────────
-    st.markdown("### Step 2 — Add an Expense")
+    # ── Add Expense ───────────────────────────────────────────────────────────
+    st.markdown("### ➕ Record New Expense")
     with st.form("add_expense", clear_on_submit=True):
         desc = st.text_input("Description", placeholder="e.g. Groceries, Rent, Coffee")
         col_a, col_b = st.columns(2)
