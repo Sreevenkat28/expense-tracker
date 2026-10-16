@@ -3,8 +3,16 @@ import {
   Wallet, Plus, Trash2, PiggyBank, TrendingDown, TrendingUp,
   AlertTriangle, CheckCircle2, RotateCcw, Sun, Moon,
   BarChart3, PieChart, DollarSign, Calendar,
-  Search, Download, Sparkles, Percent,
+  Search, Download, Percent, FileText, Image, FileSpreadsheet,
+  FileJson, Printer, ChevronDown, Check,
 } from 'lucide-react';
+import {
+  exportToCSV,
+  exportToJSON,
+  exportToPNG,
+  exportToPDF,
+  printFormattedReport,
+} from './utils/exportUtils';
 
 // ─── Types & Constants ───────────────────────────────────────────────────────
 interface Expense {
@@ -72,27 +80,24 @@ const formatDateDisplay = (dateStr: string): string => {
   }
 };
 
-const getRelativeDaysAgo = (days: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().split('T')[0];
-};
-
-const SAMPLE_EXPENSES: Expense[] = [
-  { id: 'sample-1', description: 'Whole Foods Market Groceries', amount: 8450, category: 'Food & Groceries', date: getTodayString() },
-  { id: 'sample-2', description: 'Monthly Metro Transit Pass', amount: 4500, category: 'Transportation', date: getRelativeDaysAgo(1) },
-  { id: 'sample-3', description: 'Electric & High-Speed Internet', amount: 11025, category: 'Bills & Subscriptions', date: getRelativeDaysAgo(2) },
-  { id: 'sample-4', description: 'Weekend Cinema & Popcorn', amount: 3250, category: 'Entertainment', date: getRelativeDaysAgo(3) },
-  { id: 'sample-5', description: 'Pharmacy Essentials & Vitamins', amount: 2480, category: 'Health', date: getRelativeDaysAgo(4) },
-  { id: 'sample-6', description: 'Online Software Architecture Course', amount: 4999, category: 'Education', date: getRelativeDaysAgo(5) },
-];
-
 const STORAGE_KEY = 'expense_calc_v4';
 
 function loadStoredData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Clean out any previous sample/demo data so user starts authentic
+      const cleanExpenses: Expense[] = (parsed.expenses || []).filter(
+        (e: Expense) => !e.id.startsWith('sample-')
+      );
+      const cleanBudget = parsed.budgetCents === 85000 && cleanExpenses.length === 0 ? 0 : (parsed.budgetCents || 0);
+      return {
+        ...parsed,
+        expenses: cleanExpenses,
+        budgetCents: cleanBudget,
+      };
+    }
   } catch {}
   return null;
 }
@@ -498,6 +503,8 @@ export default function App() {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amt-desc' | 'amt-asc'>('date-desc');
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
 
   const descRef = useRef<HTMLInputElement>(null);
 
@@ -602,12 +609,6 @@ export default function App() {
     setExpenses(prev => prev.filter(e => e.id !== id));
   };
 
-  const handleLoadSampleData = () => {
-    setBudgetCents(85000);
-    setBudgetInput('850.00');
-    setExpenses(SAMPLE_EXPENSES);
-  };
-
   const handleResetAll = () => {
     if (window.confirm('Are you sure you want to clear all budget and expense data?')) {
       setBudgetCents(0);
@@ -616,23 +617,35 @@ export default function App() {
     }
   };
 
+  // Export handlers
+  const notifyExport = (msg: string) => {
+    setExportSuccessMessage(msg);
+    setTimeout(() => setExportSuccessMessage(null), 3000);
+  };
+
+  const handleExportPDF = () => {
+    exportToPDF(expenses, budgetCents);
+    notifyExport('PDF document downloaded!');
+  };
+
+  const handlePrintPDF = () => {
+    printFormattedReport(expenses, budgetCents);
+  };
+
+  const handleExportPNG = async () => {
+    notifyExport('Generating PNG Image...');
+    await exportToPNG(expenses, budgetCents, dark);
+    notifyExport('PNG summary image downloaded!');
+  };
+
   const handleExportCSV = () => {
-    if (expenses.length === 0) return;
-    const headers = ['Date', 'Description', 'Category', 'Amount (USD)'];
-    const rows = expenses.map(e => [
-      e.date,
-      `"${e.description.replace(/"/g, '""')}"`,
-      `"${e.category}"`,
-      (e.amount / 100).toFixed(2),
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `expenses_ledger_${getTodayString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportToCSV(expenses, budgetCents);
+    notifyExport('CSV spreadsheet downloaded!');
+  };
+
+  const handleExportJSON = () => {
+    exportToJSON(expenses, budgetCents);
+    notifyExport('JSON backup file downloaded!');
   };
 
   // Preset quick adds
@@ -672,28 +685,23 @@ export default function App() {
                   Pro Dashboard
                 </span>
               </div>
-              <p className={`text-xs font-medium ${subtextColor}`}>Financial intelligence & spending analytics</p>
+              <p className={`text-xs font-medium ${subtextColor}`}>Personal finance & spending intelligence</p>
             </div>
           </div>
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-2.5">
-            {/* Sample data button if needed */}
-            {expenses.length === 0 && (
-              <button
-                id="load-sample-btn"
-                type="button"
-                onClick={handleLoadSampleData}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                  dark
-                    ? 'border-emerald-800 bg-emerald-950/40 text-emerald-400 hover:bg-emerald-900/50'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Load Demo Data
-              </button>
-            )}
+            {/* Export Center Trigger */}
+            <button
+              id="export-center-btn"
+              type="button"
+              onClick={() => setShowExportModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all cursor-pointer"
+              title="Export report in PDF, PNG Image, CSV, JSON"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export</span>
+            </button>
 
             {/* Dark / Light Toggle */}
             <button
@@ -716,7 +724,7 @@ export default function App() {
               id="reset-btn"
               type="button"
               onClick={handleResetAll}
-              className={`p-2 rounded-xl text-xs font-semibold border transition-all ${
+              className={`p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                 dark
                   ? 'border-slate-800 text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 hover:border-rose-800'
                   : 'border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200'
@@ -728,6 +736,14 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Floating Export Toast Message */}
+      {exportSuccessMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-xl animate-fade-in">
+          <Check className="w-4 h-4" />
+          <span>{exportSuccessMessage}</span>
+        </div>
+      )}
 
       {/* ── Main Content Container ── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
@@ -750,7 +766,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowBudgetModal(true)}
-                className={`font-bold hover:underline ${dark ? 'text-emerald-400' : 'text-emerald-600'}`}
+                className={`font-bold hover:underline cursor-pointer ${dark ? 'text-emerald-400' : 'text-emerald-600'}`}
               >
                 {budgetCents > 0 ? 'Modify Budget' : '+ Set Initial Budget'}
               </button>
@@ -962,7 +978,7 @@ export default function App() {
                     key={addAmt}
                     type="button"
                     onClick={() => handleAddBudgetQuick(addAmt)}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
                       dark
                         ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-emerald-400'
                         : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-emerald-700'
@@ -981,7 +997,7 @@ export default function App() {
                   <Plus className={`w-4 h-4 ${dark ? 'text-emerald-400' : 'text-emerald-600'}`} />
                   <h2 className={`text-sm font-bold ${headingColor}`}>Record Expense</h2>
                 </div>
-                <span className={`text-[11px] font-medium ${subtextColor}`}>Instant update</span>
+                <span className={`text-[11px] font-medium ${subtextColor}`}>Real-time sync</span>
               </div>
 
               <form onSubmit={handleAddExpense} className="space-y-3.5">
@@ -1067,8 +1083,8 @@ export default function App() {
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      onClick={() => applyPreset('Morning Coffee & Pastry', '6.50', 'Food & Groceries')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                      onClick={() => applyPreset('Morning Coffee', '6.50', 'Food & Groceries')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                         dark ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -1077,7 +1093,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => applyPreset('Lunch Special', '16.00', 'Food & Groceries')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                         dark ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -1085,8 +1101,8 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => applyPreset('Weekly Groceries', '45.00', 'Food & Groceries')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                      onClick={() => applyPreset('Supermarket Groceries', '45.00', 'Food & Groceries')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                         dark ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -1094,8 +1110,8 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => applyPreset('Gas Station Fuel', '40.00', 'Transportation')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                      onClick={() => applyPreset('Gas Fuel', '40.00', 'Transportation')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                         dark ? 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -1135,7 +1151,7 @@ export default function App() {
                     id="tab-breakdown"
                     type="button"
                     onClick={() => setChartView('breakdown')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       chartView === 'breakdown'
                         ? dark ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
                         : dark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
@@ -1148,7 +1164,7 @@ export default function App() {
                     id="tab-trend"
                     type="button"
                     onClick={() => setChartView('trend')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       chartView === 'trend'
                         ? dark ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-900 shadow-xs'
                         : dark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
@@ -1208,15 +1224,15 @@ export default function App() {
                   </div>
                   <h3 className={`text-sm font-bold ${headingColor}`}>No Expenses Recorded Yet</h3>
                   <p className={`text-xs max-w-sm mx-auto ${subtextColor}`}>
-                    Add your first expense or click "Load Demo Data" above to see interactive donut charts, category comparisons, and daily trends.
+                    Add your first expense using the form on the left to see your category donut breakdown and timeline charts.
                   </p>
                   <button
                     type="button"
-                    onClick={handleLoadSampleData}
+                    onClick={() => descRef.current?.focus()}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Populate Demo Dashboard
+                    <Plus className="w-3.5 h-3.5" />
+                    Record Your First Expense
                   </button>
                 </div>
               )}
@@ -1224,7 +1240,7 @@ export default function App() {
 
             {/* ── Transaction History Ledger ── */}
             <div className={`${cardBg} rounded-2xl border ${cardBorder} shadow-xs overflow-hidden transition-colors duration-300`}>
-              {/* Header with Title and CSV Export */}
+              {/* Header with Title and Export Options */}
               <div className={`p-4 border-b ${cardBorder} flex flex-wrap items-center justify-between gap-3`}>
                 <div className="flex items-center gap-2">
                   <h3 className={`text-sm font-bold ${headingColor}`}>Transaction Ledger</h3>
@@ -1238,18 +1254,19 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   {expenses.length > 0 && (
                     <button
-                      id="export-csv-btn"
+                      id="ledger-export-btn"
                       type="button"
-                      onClick={handleExportCSV}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                      onClick={() => setShowExportModal(true)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
                         dark
-                          ? 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          ? 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
                           : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                       }`}
-                      title="Download as CSV spreadsheet"
+                      title="Export in PDF, Image, CSV, JSON"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      Export CSV
+                      <Download className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Export Ledger</span>
+                      <ChevronDown className="w-3 h-3 text-slate-400" />
                     </button>
                   )}
                 </div>
@@ -1346,7 +1363,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleDeleteExpense(e.id)}
-                            className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${
+                            className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer ${
                               dark ? 'text-slate-500 hover:text-rose-400 hover:bg-rose-950/60' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
                             }`}
                             title="Delete transaction"
@@ -1387,7 +1404,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowBudgetModal(false)}
-                className={`text-xs font-bold px-2 py-1 rounded-lg ${dark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
+                className={`text-xs font-bold px-2 py-1 rounded-lg cursor-pointer ${dark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
               >
                 ✕
               </button>
@@ -1413,18 +1430,158 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowBudgetModal(false)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold border ${dark ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-700'}`}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border cursor-pointer ${dark ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-700'}`}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
                 >
                   Save Changes
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Multi-Format Export Center Modal ── */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className={`${cardBg} rounded-2xl border ${cardBorder} p-6 max-w-lg w-full shadow-2xl space-y-5 animate-scale-in`}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <Download className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className={`text-base font-extrabold ${headingColor}`}>Export Financial Data</h3>
+                  <p className={`text-xs ${subtextColor}`}>Download statements and snapshots in multiple formats</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className={`text-xs font-bold px-2 py-1 rounded-lg cursor-pointer ${dark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Export Options Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Option 1: PDF Document */}
+              <button
+                type="button"
+                onClick={handleExportPDF}
+                className={`p-3.5 rounded-xl border text-left transition-all group flex flex-col justify-between cursor-pointer ${
+                  dark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-emerald-500/50' : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-500/50 hover:shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded">.PDF</span>
+                </div>
+                <div>
+                  <h4 className={`text-xs font-bold ${headingColor}`}>Download PDF Statement</h4>
+                  <p className={`text-[11px] mt-0.5 ${subtextColor}`}>Official formatted PDF document with metrics & ledger table.</p>
+                </div>
+              </button>
+
+              {/* Option 2: Printable PDF View */}
+              <button
+                type="button"
+                onClick={handlePrintPDF}
+                className={`p-3.5 rounded-xl border text-left transition-all group flex flex-col justify-between cursor-pointer ${
+                  dark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-emerald-500/50' : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-500/50 hover:shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                    <Printer className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded">Print</span>
+                </div>
+                <div>
+                  <h4 className={`text-xs font-bold ${headingColor}`}>Print / Save via Browser</h4>
+                  <p className={`text-[11px] mt-0.5 ${subtextColor}`}>Opens formatted print dialog with "Save as PDF" option.</p>
+                </div>
+              </button>
+
+              {/* Option 3: PNG Image Snapshot */}
+              <button
+                type="button"
+                onClick={handleExportPNG}
+                className={`p-3.5 rounded-xl border text-left transition-all group flex flex-col justify-between cursor-pointer ${
+                  dark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-emerald-500/50' : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-500/50 hover:shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                    <Image className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">.PNG</span>
+                </div>
+                <div>
+                  <h4 className={`text-xs font-bold ${headingColor}`}>Infographic Snapshot</h4>
+                  <p className={`text-[11px] mt-0.5 ${subtextColor}`}>High-resolution image snapshot of KPI cards and category breakdown.</p>
+                </div>
+              </button>
+
+              {/* Option 4: CSV Spreadsheet */}
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className={`p-3.5 rounded-xl border text-left transition-all group flex flex-col justify-between cursor-pointer ${
+                  dark ? 'border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-emerald-500/50' : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-emerald-500/50 hover:shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">.CSV</span>
+                </div>
+                <div>
+                  <h4 className={`text-xs font-bold ${headingColor}`}>Excel / CSV Spreadsheet</h4>
+                  <p className={`text-[11px] mt-0.5 ${subtextColor}`}>Compatible with Microsoft Excel, Google Sheets, Numbers.</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Option 5: JSON Full Backup */}
+            <div className={`p-3 rounded-xl border flex items-center justify-between ${
+              dark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50/60'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <FileJson className="w-4 h-4 text-cyan-500" />
+                <div>
+                  <span className={`text-xs font-bold ${headingColor}`}>Raw JSON Data Backup</span>
+                  <span className={`text-[11px] block ${subtextColor}`}>Export complete machine-readable database snapshot.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer"
+              >
+                Export JSON
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border cursor-pointer ${dark ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-700'}`}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
