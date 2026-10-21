@@ -18,16 +18,24 @@ const CLEAN_BUDGET_CONFIG: BudgetConfig = {
   categoryBudgets: {},
 };
 
+function getKey(baseKey: string, userId?: string | null): string {
+  return userId ? `${baseKey}_usr_${userId}` : baseKey;
+}
+
 export const storageService = {
   /**
-   * Load initial application data from localStorage.
+   * Load application data for the specific user (or global guest).
    * Everything is strictly user-inputted with zero demo/sample data.
    */
-  loadData(): StorageData {
+  loadData(userId?: string | null): StorageData {
+    const txKey = getKey(TRANSACTIONS_KEY, userId);
+    const configKey = getKey(BUDGET_CONFIG_KEY, userId);
+    const goalsKey = getKey(SAVINGS_GOALS_KEY, userId);
+
     try {
-      const storedTx = localStorage.getItem(TRANSACTIONS_KEY);
-      const storedConfig = localStorage.getItem(BUDGET_CONFIG_KEY);
-      const storedGoals = localStorage.getItem(SAVINGS_GOALS_KEY);
+      const storedTx = localStorage.getItem(txKey);
+      const storedConfig = localStorage.getItem(configKey);
+      const storedGoals = localStorage.getItem(goalsKey);
 
       if (storedTx && storedConfig) {
         const parsedTx: Transaction[] = JSON.parse(storedTx);
@@ -36,10 +44,13 @@ export const storageService = {
 
         // Filter out any mock sample data from previous versions
         const userOnlyTx = parsedTx.filter(
-          t => !t.id.startsWith('tx-sep-') && !t.id.startsWith('tx-oct-') && !t.id.startsWith('sample-')
+          (t) =>
+            !t.id.startsWith('tx-sep-') &&
+            !t.id.startsWith('tx-oct-') &&
+            !t.id.startsWith('sample-')
         );
         const userOnlyGoals = parsedGoals.filter(
-          g => !g.id.startsWith('goal-1') && !g.id.startsWith('goal-2') && !g.id.startsWith('goal-3')
+          (g) => !g.id.startsWith('goal-1') && !g.id.startsWith('goal-2') && !g.id.startsWith('goal-3')
         );
 
         return {
@@ -60,22 +71,32 @@ export const storageService = {
       savingsGoals: [],
       isSampleData: false,
     };
-    storageService.saveData(initialData.transactions, initialData.budgetConfig, initialData.savingsGoals);
+    storageService.saveData(
+      initialData.transactions,
+      initialData.budgetConfig,
+      initialData.savingsGoals,
+      userId
+    );
     return initialData;
   },
 
   /**
-   * Save current transactions, budget config, and savings goals to localStorage.
+   * Save transactions, budget config, and savings goals to localStorage for the specific user.
    */
   saveData(
     transactions: Transaction[],
     config: BudgetConfig,
-    savingsGoals: SavingsGoal[] = []
+    savingsGoals: SavingsGoal[] = [],
+    userId?: string | null
   ): void {
+    const txKey = getKey(TRANSACTIONS_KEY, userId);
+    const configKey = getKey(BUDGET_CONFIG_KEY, userId);
+    const goalsKey = getKey(SAVINGS_GOALS_KEY, userId);
+
     try {
-      localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
-      localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config));
-      localStorage.setItem(SAVINGS_GOALS_KEY, JSON.stringify(savingsGoals));
+      localStorage.setItem(txKey, JSON.stringify(transactions));
+      localStorage.setItem(configKey, JSON.stringify(config));
+      localStorage.setItem(goalsKey, JSON.stringify(savingsGoals));
     } catch (e) {
       console.error('Failed to write to localStorage:', e);
     }
@@ -84,7 +105,11 @@ export const storageService = {
   /**
    * Reset to an empty clean account (0 transactions, user-defined starting balance).
    */
-  resetToCleanAccount(openingBalanceCents: number = 0, defaultBudgetCents: number = 0): StorageData {
+  resetToCleanAccount(
+    openingBalanceCents: number = 0,
+    defaultBudgetCents: number = 0,
+    userId?: string | null
+  ): StorageData {
     const data: StorageData = {
       transactions: [],
       budgetConfig: {
@@ -96,15 +121,15 @@ export const storageService = {
       savingsGoals: [],
       isSampleData: false,
     };
-    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals);
+    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, userId);
     return data;
   },
 
   /**
    * Export all data as a JSON file download.
    */
-  exportData(): void {
-    const current = storageService.loadData();
+  exportData(userId?: string | null): void {
+    const current = storageService.loadData(userId);
     const blob = new Blob([JSON.stringify(current, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

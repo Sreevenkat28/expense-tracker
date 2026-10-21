@@ -12,7 +12,6 @@ import {
   Wand2,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { formatCurrency } from '../../utils/currency';
 import { formatMonthName } from '../../utils/dates';
 import { StatCard } from './StatCard';
 import { RecentTransactionsList } from './RecentTransactionsList';
@@ -30,7 +29,9 @@ export const DashboardView: React.FC = () => {
     setIsSmartEntryOpen,
     setActiveTab,
     dark,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const {
     totalIncomeCents,

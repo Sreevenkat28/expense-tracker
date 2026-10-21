@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { formatCurrency, centsToDollars, isValidAmount } from '../../utils/currency';
+import { centsToDollars, isValidAmount } from '../../utils/currency';
 import { SavingsGoal } from '../../types';
 
 export const SavingsGoalsView: React.FC = () => {
@@ -24,7 +24,9 @@ export const SavingsGoalsView: React.FC = () => {
     updateSavingsGoal,
     deleteSavingsGoal,
     contributeToSavingsGoal,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);

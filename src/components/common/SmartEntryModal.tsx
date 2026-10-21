@@ -30,7 +30,8 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addTransaction, selectedMonth } = useExpense();
+  const { addTransaction, selectedMonth, currencyInfo } = useExpense();
+  const currencySymbol = currencyInfo.symbol;
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [parsed, setParsed] = useState<{
@@ -192,7 +193,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
               {/* Amount */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                  Amount ($)
+                  Amount ({currencySymbol})
                 </label>
                 <input
                   type="number"

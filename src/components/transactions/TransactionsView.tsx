@@ -19,7 +19,6 @@ import {
   INCOME_CATEGORIES,
   CATEGORY_COLORS,
 } from '../../types';
-import { formatCurrency } from '../../utils/currency';
 import { formatDate, formatMonthName } from '../../utils/dates';
 
 type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc';
@@ -33,7 +32,9 @@ export const TransactionsView: React.FC = () => {
     setEditingTransaction,
     deleteTransaction,
     budgetConfig,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');

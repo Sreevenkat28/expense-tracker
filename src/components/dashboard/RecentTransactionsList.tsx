@@ -2,7 +2,6 @@ import React from 'react';
 import { ArrowUpRight, ArrowDownRight, Edit2, Trash2, Plus, ArrowRight, Receipt } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { getTransactionsForMonth } from '../../utils/calculations';
-import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/dates';
 import { CATEGORY_COLORS } from '../../types';
 
@@ -14,7 +13,9 @@ export const RecentTransactionsList: React.FC = () => {
     setIsQuickAddOpen,
     setEditingTransaction,
     deleteTransaction,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const monthTx = React.useMemo(() => {
     return getTransactionsForMonth(transactions, selectedMonth)

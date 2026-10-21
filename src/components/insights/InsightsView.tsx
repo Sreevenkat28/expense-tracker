@@ -6,7 +6,6 @@ import {
   Award,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { formatCurrency } from '../../utils/currency';
 import { formatMonthName } from '../../utils/dates';
 import { CategoryPieChart } from './CategoryPieChart';
 import { MonthComparisonCard } from './MonthComparisonCard';
@@ -20,7 +19,9 @@ export const InsightsView: React.FC = () => {
     savingsSuggestions,
     patternSummaries,
     selectedMonth,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const topCategory = categorySpendings.find((c) => c.amountCents > 0);
 

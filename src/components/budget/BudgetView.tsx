@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { formatCurrency, centsToDollars, isValidAmount } from '../../utils/currency';
+import { centsToDollars, isValidAmount } from '../../utils/currency';
 import { formatMonthName } from '../../utils/dates';
 import { CATEGORY_COLORS, EXPENSE_CATEGORIES } from '../../types';
 
@@ -26,7 +26,9 @@ export const BudgetView: React.FC = () => {
     updateOpeningBalance,
     setCategoryBudget,
     deleteCategoryBudget,
+    formatAmount,
   } = useExpense();
+  const formatCurrency = formatAmount;
 
   const {
     budgetCents,

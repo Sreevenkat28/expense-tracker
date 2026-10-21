@@ -21,7 +21,8 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   onClose,
   transactionToEdit,
 }) => {
-  const { addTransaction, updateTransaction, selectedMonth } = useExpense();
+  const { addTransaction, updateTransaction, selectedMonth, currencyInfo } = useExpense();
+  const currencySymbol = currencyInfo.symbol;
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amountStr, setAmountStr] = useState<string>('');
@@ -176,11 +177,11 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
           {/* Amount Input */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-              Amount ($)
+              Amount ({currencySymbol})
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
-                $
+                {currencySymbol}
               </div>
               <input
                 type="number"
