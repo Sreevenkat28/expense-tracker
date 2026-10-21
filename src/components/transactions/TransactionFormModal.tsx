@@ -38,7 +38,6 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       setCategory(transactionToEdit.category);
       setDate(transactionToEdit.date);
     } else {
-      // Default to today if in selected month, or 1st of selected month
       const todayISO = new Date().toISOString().substring(0, 10);
       const initialDate = todayISO.startsWith(selectedMonth)
         ? todayISO
@@ -53,7 +52,6 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
     setErrors({});
   }, [transactionToEdit, isOpen, selectedMonth]);
 
-  // When type changes, switch to appropriate default category
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);
     if (newType === 'expense') {
@@ -69,7 +67,6 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     const newErrors: typeof errors = {};
 
     // Validate amount
@@ -119,45 +116,45 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div
-        className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-700">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 m-0">
-              {transactionToEdit ? 'Edit Transaction' : 'Add Transaction'}
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white m-0">
+              {transactionToEdit ? 'Edit Transaction' : 'Record Transaction'}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {transactionToEdit ? 'Update transaction details' : 'Record a new income or expense'}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {transactionToEdit ? 'Update transaction details' : 'Record a new income deposit or expense entry'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Transaction Type Segmented Toggle */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
               Transaction Type
             </label>
-            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
+            <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-2xl">
               <button
                 type="button"
                 onClick={() => handleTypeChange('expense')}
-                className={`py-2 px-3 text-sm font-bold rounded-xl transition-all ${
+                className={`py-2 px-3 text-sm font-bold rounded-xl transition-all cursor-pointer ${
                   type === 'expense'
                     ? 'bg-rose-500 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Expense (-)
@@ -165,10 +162,10 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
               <button
                 type="button"
                 onClick={() => handleTypeChange('income')}
-                className={`py-2 px-3 text-sm font-bold rounded-xl transition-all ${
+                className={`py-2 px-3 text-sm font-bold rounded-xl transition-all cursor-pointer ${
                   type === 'income'
                     ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Income (+)
@@ -178,7 +175,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
 
           {/* Amount Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
               Amount ($)
             </label>
             <div className="relative">
@@ -195,16 +192,16 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
                   setAmountStr(e.target.value);
                   if (errors.amount) setErrors((prev) => ({ ...prev, amount: undefined }));
                 }}
-                className={`w-full pl-8 pr-4 py-3 bg-slate-50 border rounded-xl text-lg font-bold text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 transition-all ${
+                className={`w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-lg font-bold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 transition-all ${
                   errors.amount
-                    ? 'border-rose-300 focus:ring-rose-500/20'
-                    : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'
+                    ? 'border-rose-300 dark:border-rose-500 focus:ring-rose-500/20'
+                    : 'border-slate-200 dark:border-slate-700 focus:ring-emerald-500/20 focus:border-emerald-500'
                 }`}
                 autoFocus
               />
             </div>
             {errors.amount && (
-              <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
+              <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" /> {errors.amount}
               </p>
             )}
@@ -212,7 +209,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
 
           {/* Description Input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
               Description
             </label>
             <div className="relative">
@@ -221,21 +218,21 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
               </div>
               <input
                 type="text"
-                placeholder="e.g. Trader Joe's Groceries, TechCorp Salary"
+                placeholder="e.g. Whole Foods Groceries, TechCorp Salary"
                 value={description}
                 onChange={(e) => {
                   setDescription(e.target.value);
                   if (errors.description) setErrors((prev) => ({ ...prev, description: undefined }));
                 }}
-                className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 transition-all ${
+                className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-sm font-medium text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 transition-all ${
                   errors.description
-                    ? 'border-rose-300 focus:ring-rose-500/20'
-                    : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'
+                    ? 'border-rose-300 dark:border-rose-500 focus:ring-rose-500/20'
+                    : 'border-slate-200 dark:border-slate-700 focus:ring-emerald-500/20 focus:border-emerald-500'
                 }`}
               />
             </div>
             {errors.description && (
-              <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
+              <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" /> {errors.description}
               </p>
             )}
@@ -245,7 +242,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Category Dropdown */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Category
               </label>
               <div className="relative">
@@ -255,16 +252,16 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as Category)}
-                  className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 appearance-none cursor-pointer"
+                  className="w-full pl-10 pr-8 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 appearance-none cursor-pointer"
                 >
                   {type === 'expense'
                     ? EXPENSE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
+                        <option key={c} value={c} className="dark:bg-slate-800 dark:text-white">
                           {c}
                         </option>
                       ))
                     : INCOME_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
+                        <option key={c} value={c} className="dark:bg-slate-800 dark:text-white">
                           {c}
                         </option>
                       ))}
@@ -275,7 +272,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
 
             {/* Date Input */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Date
               </label>
               <div className="relative">
@@ -289,15 +286,15 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
                     setDate(e.target.value);
                     if (errors.date) setErrors((prev) => ({ ...prev, date: undefined }));
                   }}
-                  className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 transition-all ${
+                  className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-sm font-medium text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 transition-all ${
                     errors.date
-                      ? 'border-rose-300 focus:ring-rose-500/20'
-                      : 'border-slate-200 focus:ring-emerald-500/20 focus:border-emerald-500'
+                      ? 'border-rose-300 dark:border-rose-500 focus:ring-rose-500/20'
+                      : 'border-slate-200 dark:border-slate-700 focus:ring-emerald-500/20 focus:border-emerald-500'
                   }`}
                 />
               </div>
               {errors.date && (
-                <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
+                <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5" /> {errors.date}
                 </p>
               )}
@@ -305,24 +302,24 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
           </div>
 
           {/* Form Actions */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+              className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className={`px-5 py-2.5 text-sm font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 text-sm font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
                 type === 'expense'
                   ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20'
                   : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
               }`}
             >
               <Check className="w-4 h-4" />
-              <span>{transactionToEdit ? 'Save Changes' : 'Add Transaction'}</span>
+              <span>{transactionToEdit ? 'Save Changes' : 'Record Transaction'}</span>
             </button>
           </div>
         </form>

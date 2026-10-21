@@ -1,13 +1,15 @@
-import { Transaction, BudgetConfig } from '../types';
-import { SAMPLE_TRANSACTIONS, INITIAL_BUDGET_CONFIG } from '../data/sampleData';
+import { Transaction, BudgetConfig, SavingsGoal } from '../types';
+import { SAMPLE_TRANSACTIONS, INITIAL_BUDGET_CONFIG, SAMPLE_SAVINGS_GOALS } from '../data/sampleData';
 
 const TRANSACTIONS_KEY = 'monthly_expense_tracker_transactions_v1';
 const BUDGET_CONFIG_KEY = 'monthly_expense_tracker_budget_config_v1';
+const SAVINGS_GOALS_KEY = 'monthly_expense_tracker_savings_goals_v1';
 const IS_SAMPLE_KEY = 'monthly_expense_tracker_is_sample_v1';
 
 export interface StorageData {
   transactions: Transaction[];
   budgetConfig: BudgetConfig;
+  savingsGoals: SavingsGoal[];
   isSampleData: boolean;
 }
 
@@ -19,12 +21,14 @@ export const storageService = {
     try {
       const storedTx = localStorage.getItem(TRANSACTIONS_KEY);
       const storedConfig = localStorage.getItem(BUDGET_CONFIG_KEY);
+      const storedGoals = localStorage.getItem(SAVINGS_GOALS_KEY);
       const storedIsSample = localStorage.getItem(IS_SAMPLE_KEY);
 
       if (storedTx && storedConfig) {
         return {
           transactions: JSON.parse(storedTx),
           budgetConfig: JSON.parse(storedConfig),
+          savingsGoals: storedGoals ? JSON.parse(storedGoals) : SAMPLE_SAVINGS_GOALS,
           isSampleData: storedIsSample !== null ? JSON.parse(storedIsSample) : false,
         };
       }
@@ -36,19 +40,26 @@ export const storageService = {
     const initialData: StorageData = {
       transactions: SAMPLE_TRANSACTIONS,
       budgetConfig: INITIAL_BUDGET_CONFIG,
+      savingsGoals: SAMPLE_SAVINGS_GOALS,
       isSampleData: true,
     };
-    storageService.saveData(initialData.transactions, initialData.budgetConfig, true);
+    storageService.saveData(initialData.transactions, initialData.budgetConfig, initialData.savingsGoals, true);
     return initialData;
   },
 
   /**
-   * Save current transactions and budget config to localStorage.
+   * Save current transactions, budget config, and savings goals to localStorage.
    */
-  saveData(transactions: Transaction[], config: BudgetConfig, isSampleData: boolean = false): void {
+  saveData(
+    transactions: Transaction[],
+    config: BudgetConfig,
+    savingsGoals: SavingsGoal[] = [],
+    isSampleData: boolean = false
+  ): void {
     try {
       localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
       localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config));
+      localStorage.setItem(SAVINGS_GOALS_KEY, JSON.stringify(savingsGoals));
       localStorage.setItem(IS_SAMPLE_KEY, JSON.stringify(isSampleData));
     } catch (e) {
       console.error('Failed to write to localStorage:', e);
@@ -62,9 +73,10 @@ export const storageService = {
     const data: StorageData = {
       transactions: [...SAMPLE_TRANSACTIONS],
       budgetConfig: { ...INITIAL_BUDGET_CONFIG },
+      savingsGoals: [...SAMPLE_SAVINGS_GOALS],
       isSampleData: true,
     };
-    storageService.saveData(data.transactions, data.budgetConfig, true);
+    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, true);
     return data;
   },
 
@@ -78,10 +90,12 @@ export const storageService = {
         monthlyBudgetCents: defaultBudgetCents,
         openingBalanceCents,
         monthBudgets: {},
+        categoryBudgets: {},
       },
+      savingsGoals: [],
       isSampleData: false,
     };
-    storageService.saveData(data.transactions, data.budgetConfig, false);
+    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, false);
     return data;
   },
 

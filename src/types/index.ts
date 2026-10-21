@@ -28,9 +28,21 @@ export interface Transaction {
   createdAt: string;
 }
 
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetCents: number;
+  currentCents: number;
+  targetDate?: string;
+  category?: string;
+  color?: string;
+  createdAt: string;
+}
+
 export interface BudgetConfig {
   monthlyBudgetCents: number; // Default spending budget in cents
   monthBudgets?: Record<string, number>; // Month-specific budget overrides, keyed by 'YYYY-MM'
+  categoryBudgets?: Record<string, number>; // Category-specific spending limits in cents
   openingBalanceCents: number; // Starting account balance in cents
 }
 

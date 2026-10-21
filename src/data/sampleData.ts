@@ -1,4 +1,4 @@
-import { Transaction, BudgetConfig } from '../types';
+import { Transaction, BudgetConfig, SavingsGoal } from '../types';
 
 export const INITIAL_BUDGET_CONFIG: BudgetConfig = {
   monthlyBudgetCents: 320000, // $3,200.00 default monthly budget
@@ -7,7 +7,47 @@ export const INITIAL_BUDGET_CONFIG: BudgetConfig = {
     '2026-09': 300000, // $3,000.00 for September 2026
     '2026-10': 320000, // $3,200.00 for October 2026
   },
+  categoryBudgets: {
+    'Food and groceries': 60000, // $600.00
+    'Bills and subscriptions': 150000, // $1,500.00
+    'Transportation': 25000, // $250.00
+    'Shopping': 40000, // $400.00
+    'Entertainment': 20000, // $200.00
+  },
 };
+
+export const SAMPLE_SAVINGS_GOALS: SavingsGoal[] = [
+  {
+    id: 'goal-1',
+    name: 'Emergency Fund (3 Months)',
+    targetCents: 1000000, // $10,000
+    currentCents: 650000, // $6,500
+    targetDate: '2026-12-31',
+    category: 'Safety',
+    color: '#10b981',
+    createdAt: '2026-08-01T00:00:00Z',
+  },
+  {
+    id: 'goal-2',
+    name: 'Winter Holiday Vacation',
+    targetCents: 250000, // $2,500
+    currentCents: 180000, // $1,800
+    targetDate: '2026-12-15',
+    category: 'Travel',
+    color: '#3b82f6',
+    createdAt: '2026-09-01T00:00:00Z',
+  },
+  {
+    id: 'goal-3',
+    name: 'Workstation Tech Upgrade',
+    targetCents: 200000, // $2,000
+    currentCents: 90000, // $900
+    targetDate: '2027-02-28',
+    category: 'Tech',
+    color: '#a855f7',
+    createdAt: '2026-09-15T00:00:00Z',
+  },
+];
 
 export const SAMPLE_TRANSACTIONS: Transaction[] = [
   // --- September 2026 ---
