@@ -108,8 +108,6 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <StorageNotice />
-
       {/* Overview Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200/60 dark:border-slate-800">
         <div>
@@ -117,11 +115,6 @@ export const DashboardView: React.FC = () => {
             <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight m-0">
               {formatMonthName(selectedMonth)} Dashboard
             </h2>
-            {isSampleData && (
-              <span className="text-[11px] font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full">
-                Sample Data
-              </span>
-            )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Real-time summary of money in, money out, and budget health

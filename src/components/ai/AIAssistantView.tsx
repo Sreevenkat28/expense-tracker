@@ -37,7 +37,7 @@ export const AIAssistantView: React.FC = () => {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Hello! I am your AI Financial Assistant for **${selectedMonth}**.\n\nI calculate exact answers directly from your active ledger (budgets, transactions, and savings goals) with **zero hallucinated numbers**.\n\nAsk me anything or click one of the suggested prompts below!`,
+      text: `Hello! I am your AI Financial Assistant.\n\nI calculate exact answers directly from your recorded expenses and income for **${selectedMonth}** with zero hallucinated figures.\n\nAsk me any question about your spending, income, budget, or savings!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);

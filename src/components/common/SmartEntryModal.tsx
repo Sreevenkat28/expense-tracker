@@ -100,14 +100,6 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
     onClose();
   };
 
-  const samplePrompts = [
-    'Spent ₹250 on lunch',
-    'Spent $45 on groceries yesterday',
-    'Earned $1200 from freelance client',
-    'Paid $80 for electric bill',
-    'Bought $15 books',
-  ];
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-150">
@@ -137,12 +129,12 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
         <form onSubmit={handleParse} className="mt-4 space-y-3">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-              Natural Language Prompt
+              Enter Transaction Details
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="e.g. Spent ₹250 on lunch or Earned $1200 freelance"
+                placeholder="e.g. Spent ₹250 on lunch, or Earned $1200 freelance"
                 value={inputPrompt}
                 onChange={(e) => {
                   setInputPrompt(e.target.value);
@@ -157,28 +149,6 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
               >
                 Parse
               </button>
-            </div>
-          </div>
-
-          {/* Quick Examples */}
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Try an example:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {samplePrompts.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setInputPrompt(p);
-                    setErrorMsg(null);
-                  }}
-                  className="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  "{p}"
-                </button>
-              ))}
             </div>
           </div>
 

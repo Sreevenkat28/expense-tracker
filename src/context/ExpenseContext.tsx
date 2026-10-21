@@ -83,12 +83,9 @@ interface ExpenseContextType {
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
 
 export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load initial state from storage
+  // Load initial state from storage (starts completely clean)
   const [data, setData] = useState(() => storageService.loadData());
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-    // If October 2026 transactions exist, default to 2026-10; otherwise current calendar month
-    return '2026-10';
-  });
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentYearMonth());
   const [activeTab, setActiveTabRaw] = useState<NavigationTab>('dashboard');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSmartEntryOpen, setIsSmartEntryOpen] = useState(false);
@@ -121,15 +118,14 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const syncStorage = useCallback((
     newTx: Transaction[],
     newConfig: BudgetConfig,
-    newGoals: SavingsGoal[],
-    isSample: boolean
+    newGoals: SavingsGoal[]
   ) => {
-    storageService.saveData(newTx, newConfig, newGoals, isSample);
+    storageService.saveData(newTx, newConfig, newGoals);
     setData({
       transactions: newTx,
       budgetConfig: newConfig,
       savingsGoals: newGoals,
-      isSampleData: isSample,
+      isSampleData: false,
     });
   }, []);
 
@@ -141,19 +137,19 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createdAt: new Date().toISOString(),
     };
     const updated = [newTx, ...data.transactions];
-    syncStorage(updated, data.budgetConfig, data.savingsGoals, false);
+    syncStorage(updated, data.budgetConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   const updateTransaction = useCallback((id: string, txData: Partial<Transaction>) => {
     const updated = data.transactions.map((tx) =>
       tx.id === id ? { ...tx, ...txData } : tx
     );
-    syncStorage(updated, data.budgetConfig, data.savingsGoals, false);
+    syncStorage(updated, data.budgetConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   const deleteTransaction = useCallback((id: string) => {
     const updated = data.transactions.filter((tx) => tx.id !== id);
-    syncStorage(updated, data.budgetConfig, data.savingsGoals, false);
+    syncStorage(updated, data.budgetConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   // ─── Budget Handlers ───────────────────────────────────────────────────────
@@ -177,7 +173,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         },
       };
     }
-    syncStorage(data.transactions, newConfig, data.savingsGoals, data.isSampleData);
+    syncStorage(data.transactions, newConfig, data.savingsGoals);
   }, [data, selectedMonth, syncStorage]);
 
   const setCategoryBudget = useCallback((category: string, limitCents: number) => {
@@ -188,7 +184,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         [category]: limitCents,
       },
     };
-    syncStorage(data.transactions, newConfig, data.savingsGoals, data.isSampleData);
+    syncStorage(data.transactions, newConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   const deleteCategoryBudget = useCallback((category: string) => {
@@ -198,7 +194,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...data.budgetConfig,
       categoryBudgets: newCatBudgets,
     };
-    syncStorage(data.transactions, newConfig, data.savingsGoals, data.isSampleData);
+    syncStorage(data.transactions, newConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   const updateOpeningBalance = useCallback((cents: number) => {
@@ -206,7 +202,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...data.budgetConfig,
       openingBalanceCents: cents,
     };
-    syncStorage(data.transactions, newConfig, data.savingsGoals, data.isSampleData);
+    syncStorage(data.transactions, newConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
   // ─── Savings Goal Handlers ─────────────────────────────────────────────────
@@ -217,17 +213,17 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createdAt: new Date().toISOString(),
     };
     const updated = [...data.savingsGoals, newGoal];
-    syncStorage(data.transactions, data.budgetConfig, updated, false);
+    syncStorage(data.transactions, data.budgetConfig, updated);
   }, [data, syncStorage]);
 
   const updateSavingsGoal = useCallback((id: string, goalData: Partial<SavingsGoal>) => {
     const updated = data.savingsGoals.map(g => g.id === id ? { ...g, ...goalData } : g);
-    syncStorage(data.transactions, data.budgetConfig, updated, false);
+    syncStorage(data.transactions, data.budgetConfig, updated);
   }, [data, syncStorage]);
 
   const deleteSavingsGoal = useCallback((id: string) => {
     const updated = data.savingsGoals.filter(g => g.id !== id);
-    syncStorage(data.transactions, data.budgetConfig, updated, false);
+    syncStorage(data.transactions, data.budgetConfig, updated);
   }, [data, syncStorage]);
 
   const contributeToSavingsGoal = useCallback((id: string, deltaCents: number) => {
@@ -238,24 +234,22 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       return g;
     });
-    syncStorage(data.transactions, data.budgetConfig, updated, false);
+    syncStorage(data.transactions, data.budgetConfig, updated);
   }, [data, syncStorage]);
 
   // ─── Reset Handlers ────────────────────────────────────────────────────────
-  const loadSampleData = useCallback(() => {
-    const freshSample = storageService.resetToSampleData();
-    setData(freshSample);
-    setSelectedMonth('2026-10');
-  }, []);
-
   const resetToCleanAccount = useCallback((
     openingBalanceCents: number = 0,
-    defaultBudgetCents: number = 250000
+    defaultBudgetCents: number = 0
   ) => {
     const freshClean = storageService.resetToCleanAccount(openingBalanceCents, defaultBudgetCents);
     setData(freshClean);
     setSelectedMonth(getCurrentYearMonth());
   }, []);
+
+  const loadSampleData = useCallback(() => {
+    resetToCleanAccount(0, 0);
+  }, [resetToCleanAccount]);
 
   // Compute available months
   const allMonths = useMemo(() => {

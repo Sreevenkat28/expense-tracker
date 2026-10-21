@@ -54,14 +54,9 @@ else:
 
     # Session state initialization
     if "monthly_budget_cents" not in st.session_state:
-        st.session_state.monthly_budget_cents = 300000  # $3,000.00
+        st.session_state.monthly_budget_cents = 0
     if "transactions" not in st.session_state:
-        # Sample starter transactions
-        st.session_state.transactions = [
-            {"id": "1", "type": "income", "amount": 350000, "description": "Salary Deposit", "category": "Salary", "date": str(datetime.date.today())},
-            {"id": "2", "type": "expense", "amount": 120000, "description": "Apartment Rent", "category": "Bills & Subscriptions", "date": str(datetime.date.today())},
-            {"id": "3", "type": "expense", "amount": 6500, "description": "Weekly Groceries", "category": "Food & Groceries", "date": str(datetime.date.today())},
-        ]
+        st.session_state.transactions = []
 
     # Calculations
     total_income = sum(t["amount"] for t in st.session_state.transactions if t["type"] == "income")

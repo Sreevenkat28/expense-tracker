@@ -1,10 +1,8 @@
 import { Transaction, BudgetConfig, SavingsGoal } from '../types';
-import { SAMPLE_TRANSACTIONS, INITIAL_BUDGET_CONFIG, SAMPLE_SAVINGS_GOALS } from '../data/sampleData';
 
-const TRANSACTIONS_KEY = 'monthly_expense_tracker_transactions_v1';
-const BUDGET_CONFIG_KEY = 'monthly_expense_tracker_budget_config_v1';
-const SAVINGS_GOALS_KEY = 'monthly_expense_tracker_savings_goals_v1';
-const IS_SAMPLE_KEY = 'monthly_expense_tracker_is_sample_v1';
+const TRANSACTIONS_KEY = 'monthly_expense_tracker_transactions_v2';
+const BUDGET_CONFIG_KEY = 'monthly_expense_tracker_budget_config_v2';
+const SAVINGS_GOALS_KEY = 'monthly_expense_tracker_savings_goals_v2';
 
 export interface StorageData {
   transactions: Transaction[];
@@ -13,37 +11,56 @@ export interface StorageData {
   isSampleData: boolean;
 }
 
+const CLEAN_BUDGET_CONFIG: BudgetConfig = {
+  monthlyBudgetCents: 0,
+  openingBalanceCents: 0,
+  monthBudgets: {},
+  categoryBudgets: {},
+};
+
 export const storageService = {
   /**
-   * Load initial application data from localStorage, falling back to sample data.
+   * Load initial application data from localStorage.
+   * Everything is strictly user-inputted with zero demo/sample data.
    */
   loadData(): StorageData {
     try {
       const storedTx = localStorage.getItem(TRANSACTIONS_KEY);
       const storedConfig = localStorage.getItem(BUDGET_CONFIG_KEY);
       const storedGoals = localStorage.getItem(SAVINGS_GOALS_KEY);
-      const storedIsSample = localStorage.getItem(IS_SAMPLE_KEY);
 
       if (storedTx && storedConfig) {
+        const parsedTx: Transaction[] = JSON.parse(storedTx);
+        const parsedConfig: BudgetConfig = JSON.parse(storedConfig);
+        const parsedGoals: SavingsGoal[] = storedGoals ? JSON.parse(storedGoals) : [];
+
+        // Filter out any mock sample data from previous versions
+        const userOnlyTx = parsedTx.filter(
+          t => !t.id.startsWith('tx-sep-') && !t.id.startsWith('tx-oct-') && !t.id.startsWith('sample-')
+        );
+        const userOnlyGoals = parsedGoals.filter(
+          g => !g.id.startsWith('goal-1') && !g.id.startsWith('goal-2') && !g.id.startsWith('goal-3')
+        );
+
         return {
-          transactions: JSON.parse(storedTx),
-          budgetConfig: JSON.parse(storedConfig),
-          savingsGoals: storedGoals ? JSON.parse(storedGoals) : SAMPLE_SAVINGS_GOALS,
-          isSampleData: storedIsSample !== null ? JSON.parse(storedIsSample) : false,
+          transactions: userOnlyTx,
+          budgetConfig: parsedConfig,
+          savingsGoals: userOnlyGoals,
+          isSampleData: false,
         };
       }
     } catch (e) {
-      console.warn('Failed to parse localStorage data, loading sample data instead:', e);
+      console.warn('Failed to parse localStorage data:', e);
     }
 
-    // Default to sample data so the dashboard is immediately interactive
+    // Default to clean empty ledger — all data is user-inputted
     const initialData: StorageData = {
-      transactions: SAMPLE_TRANSACTIONS,
-      budgetConfig: INITIAL_BUDGET_CONFIG,
-      savingsGoals: SAMPLE_SAVINGS_GOALS,
-      isSampleData: true,
+      transactions: [],
+      budgetConfig: CLEAN_BUDGET_CONFIG,
+      savingsGoals: [],
+      isSampleData: false,
     };
-    storageService.saveData(initialData.transactions, initialData.budgetConfig, initialData.savingsGoals, true);
+    storageService.saveData(initialData.transactions, initialData.budgetConfig, initialData.savingsGoals);
     return initialData;
   },
 
@@ -53,37 +70,21 @@ export const storageService = {
   saveData(
     transactions: Transaction[],
     config: BudgetConfig,
-    savingsGoals: SavingsGoal[] = [],
-    isSampleData: boolean = false
+    savingsGoals: SavingsGoal[] = []
   ): void {
     try {
       localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
       localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config));
       localStorage.setItem(SAVINGS_GOALS_KEY, JSON.stringify(savingsGoals));
-      localStorage.setItem(IS_SAMPLE_KEY, JSON.stringify(isSampleData));
     } catch (e) {
       console.error('Failed to write to localStorage:', e);
     }
   },
 
   /**
-   * Reset data to the default sample dataset.
-   */
-  resetToSampleData(): StorageData {
-    const data: StorageData = {
-      transactions: [...SAMPLE_TRANSACTIONS],
-      budgetConfig: { ...INITIAL_BUDGET_CONFIG },
-      savingsGoals: [...SAMPLE_SAVINGS_GOALS],
-      isSampleData: true,
-    };
-    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, true);
-    return data;
-  },
-
-  /**
    * Reset to an empty clean account (0 transactions, user-defined starting balance).
    */
-  resetToCleanAccount(openingBalanceCents: number = 0, defaultBudgetCents: number = 250000): StorageData {
+  resetToCleanAccount(openingBalanceCents: number = 0, defaultBudgetCents: number = 0): StorageData {
     const data: StorageData = {
       transactions: [],
       budgetConfig: {
@@ -95,7 +96,7 @@ export const storageService = {
       savingsGoals: [],
       isSampleData: false,
     };
-    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, false);
+    storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals);
     return data;
   },
 
