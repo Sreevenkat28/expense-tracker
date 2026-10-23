@@ -294,4 +294,4 @@ else:
                     for email_id in users_to_remove:
                         del st.session_state.users_db[email_id]
                     st.success("User(s) deleted successfully.")
-                    st.rerun() is this the thing i have to replace the original code to thus
+                    st.rerun()
