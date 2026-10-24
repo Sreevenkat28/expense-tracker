@@ -15,15 +15,7 @@ import {
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { authService } from '../../services/authService';
-import {
-  checkEmailIsReal,
-  loginNeedsCode,
-  startChallenge,
-  trustDevice,
-  untrustDevice,
-  clearChallenge,
-} from '../../services/emailVerification';
-import { EmailCodeStep } from './EmailCodeStep';
+import { checkEmailIsReal } from '../../services/emailCheck';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 interface LoginViewProps {
@@ -36,7 +28,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   // Login form state
-  const [loginUsername, setLoginUsername] = useState('');
+  // A remembered account is pre-filled so only the PIN is needed
+  const [rememberedUser, setRememberedUser] = useState(() => authService.getRememberedUser());
+  const [loginUsername, setLoginUsername] = useState(() => authService.getRememberedUser()?.username ?? '');
   const [loginPin, setLoginPin] = useState('');
 
   // Register form state
@@ -55,11 +49,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // "Remember this account" skips the emailed code on later log ins from this device
-  const [remember, setRemember] = useState(false);
+  // "Remember this account on this device" pre-fills the username on the next log in
+  const [remember, setRemember] = useState(() => authService.getRememberedUser() !== null);
   const [busy, setBusy] = useState(false);
-  // A code was emailed and must be entered before the account is created / opened
-  const [pending, setPending] = useState<{ kind: 'login' | 'register'; email: string; name: string; subject: string } | null>(null);
 
   const switchMode = (next: 'login' | 'register' | 'forgot') => {
     setMode(next);
@@ -67,22 +59,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setNewRecoveryCode(null);
   };
 
-  const finishLogin = () => {
-    const res = login(loginUsername, loginPin);
-    if (!res.success) {
-      setPending(null);
-      setErrorMsg(res.error || 'Invalid credentials.');
-      return;
-    }
-    const user = authService.findUser(loginUsername);
-    if (user) {
-      if (remember) trustDevice(user.id);
-      else untrustDevice(user.id);
-    }
-    if (onSuccess) onSuccess();
+  const applyRemember = (userId: string | undefined) => {
+    if (!userId) return;
+    if (remember) authService.rememberAccount(userId);
+    else if (authService.getRememberedUser()?.id === userId) authService.forgetAccount();
   };
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     if (!loginUsername.trim()) {
@@ -94,36 +77,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       return;
     }
 
-    const check = authService.checkCredentials(loginUsername, loginPin);
-    if (!check.success || !check.user) {
-      setErrorMsg(check.error || 'Invalid credentials.');
-      return;
-    }
-
-    const user = check.user;
-    if (user.email && loginNeedsCode(user, remember)) {
-      setBusy(true);
-      const sent = await startChallenge({ email: user.email, name: user.name, purpose: 'login', subject: user.id });
-      setBusy(false);
-      if (!sent.ok && !sent.notConfigured) {
-        setErrorMsg(sent.error || 'Could not send the confirmation code.');
-        return;
-      }
-      setPending({ kind: 'login', email: user.email, name: user.name, subject: user.id });
-      return;
-    }
-    finishLogin();
-  };
-
-  const finishRegister = () => {
-    const res = register(regName, regUsername, regEmail, regPin, regCurrency);
+    const res = login(loginUsername, loginPin);
     if (!res.success) {
-      setPending(null);
-      setErrorMsg(res.error || 'Could not create account.');
+      setErrorMsg(res.error || 'Invalid credentials.');
       return;
     }
-    const created = authService.findUser(regUsername);
-    if (created && remember) trustDevice(created.id);
+    applyRemember(authService.findUser(loginUsername)?.id);
     if (onSuccess) onSuccess();
   };
 
@@ -131,7 +90,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    // Cheap local checks first, then confirm the email is real, then email the code
+    // Cheap local checks first, then confirm the email address is real
     const valid = authService.validateRegistration(regName, regUsername, regEmail, regPin);
     if (!valid.success) {
       setErrorMsg(valid.error || 'Could not create account.');
@@ -139,19 +98,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     }
     setBusy(true);
     const real = await checkEmailIsReal(regEmail);
+    setBusy(false);
     if (!real.ok) {
-      setBusy(false);
       setErrorMsg(real.error || 'Please use a real email address.');
       return;
     }
-    const email = regEmail.trim().toLowerCase();
-    const sent = await startChallenge({ email, name: regName.trim(), purpose: 'register', subject: email });
-    setBusy(false);
-    if (!sent.ok && !sent.notConfigured) {
-      setErrorMsg(sent.error || 'Could not send the confirmation code.');
+
+    const res = register(regName, regUsername, regEmail, regPin, regCurrency);
+    if (!res.success) {
+      setErrorMsg(res.error || 'Could not create account.');
       return;
     }
-    setPending({ kind: 'register', email, name: regName.trim(), subject: email });
+    applyRemember(authService.findUser(regUsername)?.id);
+    if (onSuccess) onSuccess();
+  };
+
+  // "Not you?" on a remembered account: forget it and show an empty form
+  const handleUseAnotherAccount = () => {
+    authService.forgetAccount();
+    setRememberedUser(null);
+    setLoginUsername('');
+    setLoginPin('');
+    setRemember(false);
   };
 
   const handleResetSubmit = (e: React.FormEvent) => {
@@ -173,26 +141,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setResetPinConfirm('');
     setNewRecoveryCode(res.newRecoveryCode ?? null);
   };
-
-  if (pending) {
-    return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200/80 dark:border-slate-800">
-          <EmailCodeStep
-            email={pending.email}
-            name={pending.name}
-            purpose={pending.kind}
-            subject={pending.subject}
-            onVerified={pending.kind === 'login' ? finishLogin : finishRegister}
-            onCancel={() => {
-              clearChallenge();
-              setPending(null);
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
@@ -247,6 +195,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         {/* ── Log In Form ──────────────────────────────────────────────── */}
         {mode === 'login' ? (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
+            {rememberedUser && loginUsername === rememberedUser.username && (
+              <div className="flex items-center justify-between gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300">
+                <span>
+                  Welcome back, <strong>{rememberedUser.name.split(' ')[0]}</strong>. Enter your PIN to continue.
+                </span>
+                <button type="button" onClick={handleUseAnotherAccount} className="font-semibold underline shrink-0 cursor-pointer">
+                  Not you?
+                </button>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Username or Email
@@ -262,7 +220,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  autoFocus
+                  autoFocus={!rememberedUser}
                 />
               </div>
             </div>
@@ -279,6 +237,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   type="password"
                   placeholder="Enter your 4-digit PIN"
                   autoComplete="current-password"
+                  autoFocus={!!rememberedUser}
                   value={loginPin}
                   onChange={(e) => setLoginPin(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
@@ -296,7 +255,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               <span>
                 Remember this account on this device
                 <span className="block text-[11px] text-slate-400">
-                  Skips the emailed code next time. Leave unticked on shared computers.
+                  Pre-fills your username next time so you only enter your PIN. Leave unticked on shared computers.
                 </span>
               </span>
             </label>
@@ -539,7 +498,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               <span>
                 Remember this account on this device
                 <span className="block text-[11px] text-slate-400">
-                  After you confirm your email, later log ins here skip the code.
+                  Pre-fills your username on the login screen next time.
                 </span>
               </span>
             </label>

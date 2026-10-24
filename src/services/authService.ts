@@ -1,11 +1,12 @@
 import { UserProfile, UserRole } from '../types/auth';
 import { storageService } from './storage';
-import { isValidEmail, untrustDevice } from './emailVerification';
+import { isValidEmail } from './emailCheck';
 
 export { isValidEmail };
 
 const USERS_STORAGE_KEY = 'expense_tracker_profiles_v1';
 const ACTIVE_USER_SESSION_KEY = 'expense_tracker_active_session_v1';
+const REMEMBERED_USER_KEY = 'expense_tracker_remembered_user_v1';
 
 /** Generates a code like "K7QM-2XPA-9DRT" (no 0/O/1/I to avoid misreading). */
 export function generateRecoveryCode(): string {
@@ -175,6 +176,31 @@ export const authService = {
     }
   },
 
+  /** Remember this account on this device so the login screen can pre-fill it. Only the id is stored, never the PIN. */
+  rememberAccount(userId: string): void {
+    try {
+      localStorage.setItem(REMEMBERED_USER_KEY, userId);
+    } catch {}
+  },
+
+  forgetAccount(): void {
+    try {
+      localStorage.removeItem(REMEMBERED_USER_KEY);
+    } catch {}
+  },
+
+  /** The remembered account for this device, if it still exists and is enabled. */
+  getRememberedUser(): UserProfile | null {
+    try {
+      const id = localStorage.getItem(REMEMBERED_USER_KEY);
+      if (!id) return null;
+      const user = this.getUsers().find((u) => u.id === id);
+      return user && !user.disabled ? user : null;
+    } catch {
+      return null;
+    }
+  },
+
   /** Ends the session only. The account and its data stay on this device. */
   logout(): void {
     try {
@@ -222,7 +248,7 @@ export const authService = {
   deleteAccount(userId: string): void {
     this.saveUsers(this.getUsers().filter((u) => u.id !== userId));
     storageService.clearData(userId);
-    untrustDevice(userId);
+    if (this.getRememberedUser()?.id === userId) this.forgetAccount();
     try {
       if (localStorage.getItem(ACTIVE_USER_SESSION_KEY) === userId) {
         localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
