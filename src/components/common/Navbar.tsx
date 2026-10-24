@@ -7,6 +7,7 @@ import {
   LineChart,
   Bot,
   ShieldCheck,
+  CalendarDays,
 } from 'lucide-react';
 import { useExpense, NavigationTab } from '../../context/ExpenseContext';
 
@@ -21,6 +22,7 @@ export const Navbar: React.FC = () => {
     badgeColor?: string;
   }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'daily', label: 'Daily Log', icon: CalendarDays },
     {
       id: 'transactions',
       label: 'Transactions',

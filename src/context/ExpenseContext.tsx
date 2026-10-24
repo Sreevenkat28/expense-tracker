@@ -32,6 +32,7 @@ import {
 
 export type NavigationTab =
   | 'dashboard'
+  | 'daily'
   | 'transactions'
   | 'budgets'
   | 'savings'

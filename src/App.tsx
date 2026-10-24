@@ -13,6 +13,7 @@ import { SmartEntryModal } from './components/common/SmartEntryModal';
 import { ResetConfirmationModal } from './components/common/ResetConfirmationModal';
 import { LoginView } from './components/auth/LoginView';
 import { AdminView } from './components/admin/AdminView';
+import { DailyLogView } from './components/daily/DailyLogView';
 import { RecoveryCodeModal } from './components/common/AccountModals';
 
 const MainLayout: React.FC = () => {
@@ -51,6 +52,7 @@ const MainLayout: React.FC = () => {
       {/* Main Section Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
         {(activeTab === 'dashboard' || activeTab === 'home') && <DashboardView />}
+        {activeTab === 'daily' && <DailyLogView />}
         {activeTab === 'transactions' && <TransactionsView />}
         {(activeTab === 'budgets' || activeTab === 'budget') && <BudgetView />}
         {activeTab === 'savings' && <SavingsGoalsView />}
