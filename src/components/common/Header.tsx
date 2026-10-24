@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   Wallet,
@@ -9,10 +9,12 @@ import {
   LogOut,
   User,
   Coins,
+  UserX,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { MonthPicker } from './MonthPicker';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
+import { DeleteAccountModal } from './AccountModals';
 
 export const Header: React.FC = () => {
   const {
@@ -26,6 +28,7 @@ export const Header: React.FC = () => {
     currentUser,
     logout,
   } = useExpense();
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 sticky top-0 z-30 shadow-xs transition-colors">
@@ -157,19 +160,29 @@ export const Header: React.FC = () => {
             {dark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
           </button>
 
-          {/* Log Out / Lock Button */}
-          {currentUser && (
-            <button
-              onClick={logout}
-              className="p-2 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Lock / Log Out of your personal profile"
-              aria-label="Log Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          )}
+          {/* Delete Account Button */}
+          <button
+            onClick={() => setIsDeleteOpen(true)}
+            className="p-2 rounded-2xl border border-rose-200 dark:border-rose-900/80 text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer shrink-0"
+            title={currentUser ? 'Permanently delete your account and all its data' : 'Permanently delete all guest data'}
+            aria-label="Delete account"
+          >
+            <UserX className="w-4 h-4" />
+          </button>
+
+          {/* Sign Out Button (also for guests, returns to the login screen) */}
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            title={currentUser ? 'Sign out. Your data stays saved for your next log in.' : 'Leave guest mode and return to the login screen'}
+            aria-label="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
         </div>
       </div>
+      <DeleteAccountModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} />
     </header>
   );
 };

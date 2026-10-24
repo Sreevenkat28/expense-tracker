@@ -126,6 +126,31 @@ export const storageService = {
   },
 
   /**
+   * Permanently remove all ledger data for the specific user (or global guest).
+   */
+  clearData(userId?: string | null): void {
+    try {
+      localStorage.removeItem(getKey(TRANSACTIONS_KEY, userId));
+      localStorage.removeItem(getKey(BUDGET_CONFIG_KEY, userId));
+      localStorage.removeItem(getKey(SAVINGS_GOALS_KEY, userId));
+    } catch (e) {
+      console.error('Failed to clear localStorage:', e);
+    }
+  },
+
+  /**
+   * Count stored transactions for a user without triggering a default save.
+   */
+  countTransactions(userId?: string | null): number {
+    try {
+      const stored = localStorage.getItem(getKey(TRANSACTIONS_KEY, userId));
+      return stored ? (JSON.parse(stored) as Transaction[]).length : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
    * Export all data as a JSON file download.
    */
   exportData(userId?: string | null): void {

@@ -6,11 +6,12 @@ import {
   PiggyBank,
   LineChart,
   Bot,
+  ShieldCheck,
 } from 'lucide-react';
 import { useExpense, NavigationTab } from '../../context/ExpenseContext';
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, monthSummary, savingsGoals } = useExpense();
+  const { activeTab, setActiveTab, monthSummary, savingsGoals, isAdmin } = useExpense();
 
   const navItems: {
     id: NavigationTab;
@@ -47,6 +48,7 @@ export const Navbar: React.FC = () => {
       badge: 'Smart',
       badgeColor: 'bg-indigo-500 text-white',
     },
+    ...(isAdmin ? [{ id: 'admin' as NavigationTab, label: 'Admin', icon: ShieldCheck }] : []),
   ];
 
   return (

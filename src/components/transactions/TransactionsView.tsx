@@ -12,6 +12,7 @@ import {
   FileJson,
   Printer,
   Wand2,
+  Upload,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import {
@@ -20,6 +21,8 @@ import {
   CATEGORY_COLORS,
 } from '../../types';
 import { formatDate, formatMonthName } from '../../utils/dates';
+import { transactionsToCSV, downloadTextFile } from '../../utils/csv';
+import { ImportCSVModal } from './ImportCSVModal';
 
 type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc';
 
@@ -33,7 +36,9 @@ export const TransactionsView: React.FC = () => {
     deleteTransaction,
     budgetConfig,
     formatAmount,
+    currency,
   } = useExpense();
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const formatCurrency = formatAmount;
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,23 +117,15 @@ export const TransactionsView: React.FC = () => {
   }, [filteredTransactions]);
 
   const handleExportCSV = () => {
-    if (filteredTransactions.length === 0) return;
-    const headers = ['Date', 'Type', 'Description', 'Category', 'Amount (USD)'];
-    const rows = filteredTransactions.map((tx) => [
-      tx.date,
-      tx.type.toUpperCase(),
-      `"${tx.description.replace(/"/g, '""')}"`,
-      `"${tx.category}"`,
-      (tx.type === 'expense' ? `-${(tx.amountCents / 100).toFixed(2)}` : (tx.amountCents / 100).toFixed(2)),
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `transactions_${scopeFilter === 'month' ? selectedMonth : 'all_records'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (filteredTransactions.length === 0) {
+      alert('There are no transactions in the current view to export. Try switching the scope to "All-Time".');
+      return;
+    }
+    downloadTextFile(
+      transactionsToCSV(filteredTransactions, currency),
+      `transactions_${scopeFilter === 'month' ? selectedMonth : 'all_records'}.csv`,
+      'text/csv'
+    );
   };
 
   const handleExportJSON = () => {
@@ -161,11 +158,21 @@ export const TransactionsView: React.FC = () => {
             Transaction Ledger
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Search, filter, record income and expenses, and export CSV reports
+            Search, filter, record income and expenses, and import / export CSV files
           </p>
         </div>
 
         <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
+          {/* Import CSV button */}
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            title="Import transactions from a CSV spreadsheet"
+          >
+            <Upload className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>CSV Import</span>
+          </button>
+
           {/* Export CSV button */}
           <button
             onClick={handleExportCSV}
@@ -426,6 +433,7 @@ export const TransactionsView: React.FC = () => {
           </div>
         )}
       </div>
+      <ImportCSVModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
     </div>
   );
 };

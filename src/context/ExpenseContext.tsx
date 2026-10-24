@@ -37,6 +37,7 @@ export type NavigationTab =
   | 'savings'
   | 'insights'
   | 'ai'
+  | 'admin'
   | 'home'
   | 'budget';
 
@@ -44,10 +45,16 @@ interface ExpenseContextType {
   // Auth
   currentUser: UserProfile | null;
   isAuthenticated: boolean;
-  login: (username: string, pin: string) => { success: boolean; error?: string };
-  register: (name: string, username: string, pin: string, currency?: string) => { success: boolean; error?: string };
+  isAdmin: boolean;
+  login: (identifier: string, pin: string) => { success: boolean; error?: string };
+  register: (name: string, username: string, email: string, pin: string, currency?: string) => { success: boolean; error?: string };
   logout: () => void;
   continueAsGuest: () => void;
+  deleteAccount: () => void;
+  refreshCurrentUser: () => void;
+  // Recovery code to show once right after sign-up; cleared when the user dismisses it
+  pendingRecoveryCode: string | null;
+  dismissRecoveryCode: () => void;
 
   // Data
   transactions: Transaction[];
@@ -81,6 +88,7 @@ interface ExpenseContextType {
   addTransaction: (data: Omit<Transaction, 'id' | 'createdAt'>) => void;
   updateTransaction: (id: string, data: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
+  importTransactions: (rows: Omit<Transaction, 'id' | 'createdAt'>[]) => void;
 
   // Budget Actions
   updateBudget: (budgetCents: number, monthSpecific?: boolean) => void;
@@ -116,8 +124,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.getCurrentUser() !== null);
 
-  const login = useCallback((username: string, pin: string) => {
-    const result = authService.login(username, pin);
+  const [pendingRecoveryCode, setPendingRecoveryCode] = useState<string | null>(null);
+
+  const login = useCallback((identifier: string, pin: string) => {
+    const result = authService.login(identifier, pin);
     if (result.success && result.user) {
       setCurrentUser(result.user);
       setIsAuthenticated(true);
@@ -132,9 +142,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: result.success, error: result.error };
   }, []);
 
-  const register = useCallback((name: string, username: string, pin: string, currency: string = 'USD') => {
-    const result = authService.register(name, username, pin, currency);
+  const register = useCallback((name: string, username: string, email: string, pin: string, currency: string = 'USD') => {
+    const result = authService.register(name, username, email, pin, currency);
     if (result.success && result.user) {
+      setPendingRecoveryCode(result.user.recoveryCode ?? null);
       setCurrentUser(result.user);
       setIsAuthenticated(true);
       setGlobalCurrency(currency);
@@ -151,6 +162,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setData(storageService.loadData(null));
     setSelectedMonth(getCurrentYearMonth());
     setSelectedDate(null);
+    setActiveTabRaw('dashboard');
   }, []);
 
   const continueAsGuest = useCallback(() => {
@@ -159,6 +171,16 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsAuthenticated(true); // guest is still "in" the app
     setData(storageService.loadData(null));
   }, []);
+
+  const dismissRecoveryCode = useCallback(() => setPendingRecoveryCode(null), []);
+
+  // Re-read the signed-in profile (e.g. after an admin edits accounts); signs out if it was removed
+  const refreshCurrentUser = useCallback(() => {
+    if (!currentUser) return;
+    const fresh = authService.getCurrentUser();
+    if (fresh) setCurrentUser(fresh);
+    else logout();
+  }, [currentUser, logout]);
 
   // ─── Data State ──────────────────────────────────────────────────────────────
   const [data, setData] = useState(() =>
@@ -258,6 +280,16 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     syncStorage(updated, data.budgetConfig, data.savingsGoals);
   }, [data, syncStorage]);
 
+  const importTransactions = useCallback((rows: Omit<Transaction, 'id' | 'createdAt'>[]) => {
+    const now = new Date().toISOString();
+    const imported: Transaction[] = rows.map((row, i) => ({
+      ...row,
+      id: `tx-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: now,
+    }));
+    syncStorage([...imported, ...data.transactions], data.budgetConfig, data.savingsGoals);
+  }, [data, syncStorage]);
+
   // ─── Budgets ─────────────────────────────────────────────────────────────────
   const updateBudget = useCallback((budgetCents: number, monthSpecific: boolean = false) => {
     const newConfig: BudgetConfig = monthSpecific
@@ -311,6 +343,13 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const resetAllData = useCallback(() => resetToCleanAccount(0, 0), [resetToCleanAccount]);
 
+  // Permanently wipes the signed-in account (or the guest ledger) from this device, then signs out
+  const deleteAccount = useCallback(() => {
+    if (currentUser) authService.deleteAccount(currentUser.id);
+    else storageService.clearData(null);
+    logout();
+  }, [currentUser, logout]);
+
   // ─── Derived Data ─────────────────────────────────────────────────────────────
   const allMonths = useMemo(() => {
     const set = new Set<string>();
@@ -357,10 +396,15 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const value: ExpenseContextType = {
     currentUser,
     isAuthenticated,
+    isAdmin: currentUser?.role === 'admin',
     login,
     register,
     logout,
     continueAsGuest,
+    deleteAccount,
+    refreshCurrentUser,
+    pendingRecoveryCode,
+    dismissRecoveryCode,
     transactions: data.transactions,
     selectedMonth,
     setSelectedMonth: handleSetSelectedMonth,
@@ -386,6 +430,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    importTransactions,
     updateBudget,
     setCategoryBudget,
     deleteCategoryBudget,
