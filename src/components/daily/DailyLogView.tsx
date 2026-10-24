@@ -43,6 +43,7 @@ export const DailyLogView: React.FC = () => {
     formatAmount,
     currencyInfo,
     monthSummary,
+    setActiveTab,
   } = useExpense();
 
   const today = getTodayDateString();
@@ -171,6 +172,16 @@ export const DailyLogView: React.FC = () => {
             aria-label="Next day"
           >
             <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setSelectedDate(null);
+              setActiveTab('dashboard');
+            }}
+            className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            title="Go back to the monthly dashboard"
+          >
+            Whole month
           </button>
           {day !== today && (
             <button

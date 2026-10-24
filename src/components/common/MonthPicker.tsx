@@ -27,6 +27,8 @@ export const MonthPicker: React.FC = () => {
     selectedDate,
     setSelectedDate,
     transactions,
+    activeTab,
+    setActiveTab,
   } = useExpense();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -98,23 +100,31 @@ export const MonthPicker: React.FC = () => {
     const paddedDay = String(dayNum).padStart(2, '0');
     const dateStr = `${currentYearNum}-${paddedMonth}-${paddedDay}`;
     setSelectedDate(dateStr);
+    setActiveTab('daily'); // open that day so expenses can be noted down for it
     setIsOpen(false);
+  };
+
+  // Leaving day mode: the Daily Log has no meaning without a day, so return to the monthly view
+  const leaveDayMode = () => {
+    setSelectedDate(null);
+    if (activeTab === 'daily') setActiveTab('dashboard');
   };
 
   const handleClearDay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setSelectedDate(null);
+    leaveDayMode();
   };
 
   const handleJumpToToday = () => {
     const today = getTodayDateString();
     setSelectedDate(today);
     setSelectedMonth(getCurrentYearMonth());
+    setActiveTab('daily');
     setIsOpen(false);
   };
 
   const handleViewWholeMonth = () => {
-    setSelectedDate(null);
+    leaveDayMode();
     setIsOpen(false);
   };
 
@@ -197,7 +207,7 @@ export const MonthPicker: React.FC = () => {
             <span
               onClick={handleClearDay}
               className="ml-0.5 p-0.5 hover:bg-emerald-600 rounded-full cursor-pointer"
-              title="Clear day filter (show all month)"
+              title="Back to whole month view"
             >
               <X className="w-3 h-3" />
             </span>

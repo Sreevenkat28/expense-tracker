@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Plus,
@@ -37,6 +37,7 @@ export const TransactionsView: React.FC = () => {
     budgetConfig,
     formatAmount,
     currency,
+    selectedDate,
   } = useExpense();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const formatCurrency = formatAmount;
@@ -45,7 +46,12 @@ export const TransactionsView: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
-  const [scopeFilter, setScopeFilter] = useState<'month' | 'all'>('month');
+  const [scopeFilter, setScopeFilter] = useState<'day' | 'month' | 'all'>(selectedDate ? 'day' : 'month');
+
+  // Picking a day in the header calendar narrows the list to that day; clearing it returns to the month
+  useEffect(() => {
+    setScopeFilter((prev) => (selectedDate ? 'day' : prev === 'day' ? 'month' : prev));
+  }, [selectedDate]);
 
   // All available categories for filter dropdown
   const allCategories = useMemo(() => {
@@ -56,6 +62,9 @@ export const TransactionsView: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     const result = transactions.filter((tx) => {
       // Month scope check
+      if (scopeFilter === 'day' && selectedDate && tx.date !== selectedDate) {
+        return false;
+      }
       if (scopeFilter === 'month' && !tx.date.startsWith(selectedMonth)) {
         return false;
       }
@@ -98,7 +107,7 @@ export const TransactionsView: React.FC = () => {
     });
 
     return result;
-  }, [transactions, selectedMonth, scopeFilter, typeFilter, categoryFilter, searchQuery, sortBy]);
+  }, [transactions, selectedMonth, selectedDate, scopeFilter, typeFilter, categoryFilter, searchQuery, sortBy]);
 
   // Aggregate totals for the filtered results
   const summaryTotals = useMemo(() => {
@@ -123,7 +132,7 @@ export const TransactionsView: React.FC = () => {
     }
     downloadTextFile(
       transactionsToCSV(filteredTransactions, currency),
-      `transactions_${scopeFilter === 'month' ? selectedMonth : 'all_records'}.csv`,
+      `transactions_${scopeFilter === 'day' && selectedDate ? selectedDate : scopeFilter === 'month' ? selectedMonth : 'all_records'}.csv`,
       'text/csv'
     );
   };
@@ -232,9 +241,10 @@ export const TransactionsView: React.FC = () => {
           <div className="lg:col-span-2">
             <select
               value={scopeFilter}
-              onChange={(e) => setScopeFilter(e.target.value as 'month' | 'all')}
+              onChange={(e) => setScopeFilter(e.target.value as 'day' | 'month' | 'all')}
               className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
             >
+              {selectedDate && <option value="day">Day: {formatDate(selectedDate)}</option>}
               <option value="month">Month: {formatMonthName(selectedMonth)}</option>
               <option value="all">All-Time Records</option>
             </select>
