@@ -15,6 +15,15 @@ import {
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { authService } from '../../services/authService';
+import {
+  checkEmailIsReal,
+  loginNeedsCode,
+  startChallenge,
+  trustDevice,
+  untrustDevice,
+  clearChallenge,
+} from '../../services/emailVerification';
+import { EmailCodeStep } from './EmailCodeStep';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 interface LoginViewProps {
@@ -46,13 +55,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // "Remember this account" skips the emailed code on later log ins from this device
+  const [remember, setRemember] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // A code was emailed and must be entered before the account is created / opened
+  const [pending, setPending] = useState<{ kind: 'login' | 'register'; email: string; name: string; subject: string } | null>(null);
+
   const switchMode = (next: 'login' | 'register' | 'forgot') => {
     setMode(next);
     setErrorMsg(null);
     setNewRecoveryCode(null);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const finishLogin = () => {
+    const res = login(loginUsername, loginPin);
+    if (!res.success) {
+      setPending(null);
+      setErrorMsg(res.error || 'Invalid credentials.');
+      return;
+    }
+    const user = authService.findUser(loginUsername);
+    if (user) {
+      if (remember) trustDevice(user.id);
+      else untrustDevice(user.id);
+    }
+    if (onSuccess) onSuccess();
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     if (!loginUsername.trim()) {
@@ -64,24 +94,64 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       return;
     }
 
-    const res = login(loginUsername, loginPin);
-    if (!res.success) {
-      setErrorMsg(res.error || 'Invalid credentials.');
-    } else {
-      if (onSuccess) onSuccess();
+    const check = authService.checkCredentials(loginUsername, loginPin);
+    if (!check.success || !check.user) {
+      setErrorMsg(check.error || 'Invalid credentials.');
+      return;
     }
+
+    const user = check.user;
+    if (user.email && loginNeedsCode(user, remember)) {
+      setBusy(true);
+      const sent = await startChallenge({ email: user.email, name: user.name, purpose: 'login', subject: user.id });
+      setBusy(false);
+      if (!sent.ok && !sent.notConfigured) {
+        setErrorMsg(sent.error || 'Could not send the confirmation code.');
+        return;
+      }
+      setPending({ kind: 'login', email: user.email, name: user.name, subject: user.id });
+      return;
+    }
+    finishLogin();
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const finishRegister = () => {
+    const res = register(regName, regUsername, regEmail, regPin, regCurrency);
+    if (!res.success) {
+      setPending(null);
+      setErrorMsg(res.error || 'Could not create account.');
+      return;
+    }
+    const created = authService.findUser(regUsername);
+    if (created && remember) trustDevice(created.id);
+    if (onSuccess) onSuccess();
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    const res = register(regName, regUsername, regEmail, regPin, regCurrency);
-    if (!res.success) {
-      setErrorMsg(res.error || 'Could not create account.');
-    } else {
-      if (onSuccess) onSuccess();
+    // Cheap local checks first, then confirm the email is real, then email the code
+    const valid = authService.validateRegistration(regName, regUsername, regEmail, regPin);
+    if (!valid.success) {
+      setErrorMsg(valid.error || 'Could not create account.');
+      return;
     }
+    setBusy(true);
+    const real = await checkEmailIsReal(regEmail);
+    if (!real.ok) {
+      setBusy(false);
+      setErrorMsg(real.error || 'Please use a real email address.');
+      return;
+    }
+    const email = regEmail.trim().toLowerCase();
+    const sent = await startChallenge({ email, name: regName.trim(), purpose: 'register', subject: email });
+    setBusy(false);
+    if (!sent.ok && !sent.notConfigured) {
+      setErrorMsg(sent.error || 'Could not send the confirmation code.');
+      return;
+    }
+    setPending({ kind: 'register', email, name: regName.trim(), subject: email });
   };
 
   const handleResetSubmit = (e: React.FormEvent) => {
@@ -103,6 +173,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setResetPinConfirm('');
     setNewRecoveryCode(res.newRecoveryCode ?? null);
   };
+
+  if (pending) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200/80 dark:border-slate-800">
+          <EmailCodeStep
+            email={pending.email}
+            name={pending.name}
+            purpose={pending.kind}
+            subject={pending.subject}
+            onVerified={pending.kind === 'login' ? finishLogin : finishRegister}
+            onCancel={() => {
+              clearChallenge();
+              setPending(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
@@ -196,12 +286,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               </div>
             </div>
 
+            <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="mt-0.5 accent-emerald-600"
+              />
+              <span>
+                Remember this account on this device
+                <span className="block text-[11px] text-slate-400">
+                  Skips the emailed code next time. Leave unticked on shared computers.
+                </span>
+              </span>
+            </label>
+
             <button
               type="submit"
-              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              disabled={busy}
+              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
-              <span>Log In to My Ledger</span>
+              <span>{busy ? 'Please wait…' : 'Log In to My Ledger'}</span>
             </button>
 
             <div className="text-center">
@@ -423,12 +529,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               </div>
             </div>
 
+            <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="mt-0.5 accent-emerald-600"
+              />
+              <span>
+                Remember this account on this device
+                <span className="block text-[11px] text-slate-400">
+                  After you confirm your email, later log ins here skip the code.
+                </span>
+              </span>
+            </label>
+
             <button
               type="submit"
-              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              disabled={busy}
+              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Create My Personal Account</span>
+              <span>{busy ? 'Please wait…' : 'Create My Personal Account'}</span>
             </button>
           </form>
         )}

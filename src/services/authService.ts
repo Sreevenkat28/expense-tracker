@@ -1,14 +1,11 @@
 import { UserProfile, UserRole } from '../types/auth';
 import { storageService } from './storage';
+import { isValidEmail, untrustDevice } from './emailVerification';
+
+export { isValidEmail };
 
 const USERS_STORAGE_KEY = 'expense_tracker_profiles_v1';
 const ACTIVE_USER_SESSION_KEY = 'expense_tracker_active_session_v1';
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-export function isValidEmail(email: string): boolean {
-  return EMAIL_PATTERN.test(email.trim());
-}
 
 /** Generates a code like "K7QM-2XPA-9DRT" (no 0/O/1/I to avoid misreading). */
 export function generateRecoveryCode(): string {
@@ -84,7 +81,13 @@ export const authService = {
     );
   },
 
-  register(name: string, username: string, email: string, pin: string, currency: string = 'USD'): AuthResult {
+  /** Runs every sign-up check without creating anything (used before emailing a code). */
+  validateRegistration(name: string, username: string, email: string, pin: string): { success: boolean; error?: string } {
+    const result = this.register(name, username, email, pin, 'USD', true);
+    return { success: result.success, error: result.error };
+  },
+
+  register(name: string, username: string, email: string, pin: string, currency: string = 'USD', dryRun: boolean = false): AuthResult {
     const trimmedName = name.trim();
     const cleanUsername = username.trim().toLowerCase();
     const cleanEmail = email.trim().toLowerCase();
@@ -115,6 +118,10 @@ export const authService = {
       return { success: false, error: 'An account with this email already exists. Please log in instead.' };
     }
 
+    if (dryRun) {
+      return { success: true };
+    }
+
     const newUser: UserProfile = {
       id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       name: trimmedName,
@@ -137,7 +144,8 @@ export const authService = {
     return { success: true, user: newUser };
   },
 
-  login(identifier: string, pin: string): AuthResult {
+  /** Verifies username/email + PIN without starting a session. */
+  checkCredentials(identifier: string, pin: string): AuthResult {
     const user = this.findUser(identifier);
 
     if (!user) {
@@ -149,6 +157,13 @@ export const authService = {
     if (user.disabled) {
       return { success: false, error: 'This account has been disabled by an admin.' };
     }
+    return { success: true, user };
+  },
+
+  login(identifier: string, pin: string): AuthResult {
+    const check = this.checkCredentials(identifier, pin);
+    if (!check.success || !check.user) return check;
+    const user = check.user;
 
     const loggedIn = { ...user, lastLoginAt: new Date().toISOString() };
     this.saveUsers(this.getUsers().map((u) => (u.id === user.id ? loggedIn : u)));
@@ -207,6 +222,7 @@ export const authService = {
   deleteAccount(userId: string): void {
     this.saveUsers(this.getUsers().filter((u) => u.id !== userId));
     storageService.clearData(userId);
+    untrustDevice(userId);
     try {
       if (localStorage.getItem(ACTIVE_USER_SESSION_KEY) === userId) {
         localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
