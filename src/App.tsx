@@ -14,7 +14,6 @@ import { ResetConfirmationModal } from './components/common/ResetConfirmationMod
 import { LoginView } from './components/auth/LoginView';
 import { AdminView } from './components/admin/AdminView';
 import { DailyLogView } from './components/daily/DailyLogView';
-import { RecoveryCodeModal } from './components/common/AccountModals';
 
 const MainLayout: React.FC = () => {
   const {
@@ -82,9 +81,6 @@ const MainLayout: React.FC = () => {
         isOpen={isResetModalOpen}
         onClose={() => setIsResetModalOpen(false)}
       />
-
-      {/* One-time recovery code after sign-up */}
-      <RecoveryCodeModal />
 
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 py-5 text-xs text-slate-500 dark:text-slate-400 transition-colors">

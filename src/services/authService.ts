@@ -8,23 +8,6 @@ const USERS_STORAGE_KEY = 'expense_tracker_profiles_v1';
 const ACTIVE_USER_SESSION_KEY = 'expense_tracker_active_session_v1';
 const REMEMBERED_USER_KEY = 'expense_tracker_remembered_user_v1';
 
-/** Generates a code like "K7QM-2XPA-9DRT" (no 0/O/1/I to avoid misreading). */
-export function generateRecoveryCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = new Uint8Array(12);
-  try {
-    crypto.getRandomValues(bytes);
-  } catch {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}`;
-}
-
-function normalizeCode(code: string): string {
-  return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
-
 function validatePin(pin: string): string | null {
   if (!pin || pin.length < 4) return 'PIN / Password must be at least 4 characters.';
   return null;
@@ -129,7 +112,6 @@ export const authService = {
       username: cleanUsername,
       email: cleanEmail,
       pin: cleanPin,
-      recoveryCode: generateRecoveryCode(),
       role: users.length === 0 ? 'admin' : 'user',
       currency,
       createdAt: new Date().toISOString(),
@@ -209,39 +191,14 @@ export const authService = {
   },
 
   /**
-   * Resets a forgotten PIN using the recovery code shown at sign-up.
-   * The code is single-use: a new one is issued and returned.
+   * Sets a new PIN for an account. Callers must have proven ownership first
+   * (see pinReset.ts: the emailed code) or be an admin.
    */
-  resetPinWithRecoveryCode(identifier: string, recoveryCode: string, newPin: string): {
-    success: boolean;
-    error?: string;
-    newRecoveryCode?: string;
-  } {
-    const user = this.findUser(identifier);
-    if (!user) {
-      return { success: false, error: 'Account not found. Check your username / email.' };
-    }
-    if (!user.recoveryCode) {
-      return {
-        success: false,
-        error: 'This account has no recovery code (it was created before recovery codes existed). Ask the admin to reset your PIN.',
-      };
-    }
-    if (normalizeCode(recoveryCode) !== normalizeCode(user.recoveryCode)) {
-      return { success: false, error: 'Recovery code is incorrect.' };
-    }
+  setPin(userId: string, newPin: string): { success: boolean; error?: string } {
     const pinError = validatePin(newPin.trim());
-    if (pinError) {
-      return { success: false, error: pinError };
-    }
-
-    const newRecoveryCode = generateRecoveryCode();
-    this.saveUsers(
-      this.getUsers().map((u) =>
-        u.id === user.id ? { ...u, pin: newPin.trim(), recoveryCode: newRecoveryCode } : u
-      )
-    );
-    return { success: true, newRecoveryCode };
+    if (pinError) return { success: false, error: pinError };
+    this.saveUsers(this.getUsers().map((u) => (u.id === userId ? { ...u, pin: newPin.trim() } : u)));
+    return { success: true };
   },
 
   /** Permanently removes an account and all of its ledger data from this device. */
@@ -271,16 +228,7 @@ export const authService = {
     this.saveUsers(this.getUsers().map((u) => (u.id === userId ? { ...u, disabled } : u)));
   },
 
-  /** Sets a new PIN and issues a fresh recovery code, which the admin hands to the user. */
-  adminResetPin(userId: string, newPin: string): { success: boolean; error?: string; newRecoveryCode?: string } {
-    const pinError = validatePin(newPin.trim());
-    if (pinError) return { success: false, error: pinError };
-    const newRecoveryCode = generateRecoveryCode();
-    this.saveUsers(
-      this.getUsers().map((u) =>
-        u.id === userId ? { ...u, pin: newPin.trim(), recoveryCode: newRecoveryCode } : u
-      )
-    );
-    return { success: true, newRecoveryCode };
+  adminResetPin(userId: string, newPin: string): { success: boolean; error?: string } {
+    return this.setPin(userId, newPin);
   },
 };

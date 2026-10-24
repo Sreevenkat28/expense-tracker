@@ -10,12 +10,11 @@ import {
   AlertCircle,
   Coins,
   Mail,
-  LifeBuoy,
-  CheckCircle2,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { authService } from '../../services/authService';
 import { checkEmailIsReal } from '../../services/emailCheck';
+import { ResetPinForm } from './ResetPinForm';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 interface LoginViewProps {
@@ -40,23 +39,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [regPin, setRegPin] = useState('');
   const [regCurrency, setRegCurrency] = useState('USD');
 
-  // Forgot PIN form state
-  const [resetIdentifier, setResetIdentifier] = useState('');
-  const [resetCode, setResetCode] = useState('');
-  const [resetPin, setResetPin] = useState('');
-  const [resetPinConfirm, setResetPinConfirm] = useState('');
-  const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null);
-
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // "Remember this account on this device" pre-fills the username on the next log in
   const [remember, setRemember] = useState(() => authService.getRememberedUser() !== null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const switchMode = (next: 'login' | 'register' | 'forgot') => {
     setMode(next);
+    setNotice(null);
     setErrorMsg(null);
-    setNewRecoveryCode(null);
   };
 
   const applyRemember = (userId: string | undefined) => {
@@ -122,26 +115,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setRemember(false);
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    if (resetPin !== resetPinConfirm) {
-      setErrorMsg('The two new PINs do not match.');
-      return;
-    }
-    const res = authService.resetPinWithRecoveryCode(resetIdentifier, resetCode, resetPin);
-    if (!res.success) {
-      setErrorMsg(res.error || 'Could not reset PIN.');
-      return;
-    }
-    setLoginUsername(resetIdentifier);
-    setLoginPin('');
-    setResetCode('');
-    setResetPin('');
-    setResetPinConfirm('');
-    setNewRecoveryCode(res.newRecoveryCode ?? null);
-  };
-
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
       <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200/80 dark:border-slate-800 transition-all">
@@ -183,6 +156,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
             Create Account
           </button>
         </div>
+
+        {notice && mode === 'login' && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl text-xs text-emerald-700 dark:text-emerald-300">
+            {notice}
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMsg && (
@@ -275,118 +254,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                 onClick={() => switchMode('forgot')}
                 className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
               >
-                Forgot PIN / Password?
+                Forgot PIN? Reset it by email
               </button>
             </div>
           </form>
         ) : mode === 'forgot' ? (
-          /* ── Forgot PIN Form ─────────────────────────────────────────── */
-          newRecoveryCode ? (
-            <div className="space-y-4">
-              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>Your PIN has been reset. Your old recovery code no longer works. Save this new one:</span>
-              </div>
-              <div className="text-center font-mono text-lg font-black tracking-widest text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 rounded-xl py-3 select-all">
-                {newRecoveryCode}
-              </div>
-              <button
-                type="button"
-                onClick={() => switchMode('login')}
-                className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Back to Log In</span>
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleResetSubmit} className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400 m-0 leading-relaxed">
-                Enter the recovery code you were shown when you created your account. Lost it? Ask the
-                device admin to reset your PIN from the Admin tab.
-              </p>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  Username or Email
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <User className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="text"
-                    value={resetIdentifier}
-                    onChange={(e) => setResetIdentifier(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    autoFocus
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  Recovery Code
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <LifeBuoy className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="XXXX-XXXX-XXXX"
-                    value={resetCode}
-                    onChange={(e) => setResetCode(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono uppercase"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    New PIN
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={resetPin}
-                    onChange={(e) => setResetPin(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 !pl-4"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    Confirm PIN
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={resetPinConfirm}
-                    onChange={(e) => setResetPinConfirm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 !pl-4"
-                    required
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>Reset My PIN</span>
-              </button>
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-600 cursor-pointer"
-                >
-                  Back to Log In
-                </button>
-              </div>
-            </form>
-          )
+          <ResetPinForm
+            onBack={() => switchMode('login')}
+            onDone={(identifier) => {
+              setLoginUsername(identifier);
+              setLoginPin('');
+              setRememberedUser(null);
+              setMode('login');
+              setErrorMsg(null);
+              setNotice('Your PIN has been updated. Log in with your new PIN.');
+            }}
+          />
         ) : (
           /* ── Create Account Form ─────────────────────────────────────── */
           <form onSubmit={handleRegisterSubmit} className="space-y-4">

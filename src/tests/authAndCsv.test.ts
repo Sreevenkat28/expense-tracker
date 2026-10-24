@@ -69,17 +69,6 @@ describe('Accounts: email, sign out, delete, PIN reset, admin', () => {
     expect(localStorage.length).toBe(1); // only the (now empty) profiles list remains
   });
 
-  it('resets PIN with recovery code, and the code is single-use', () => {
-    const { user } = authService.register('Alice', 'alice', 'alice@x.com', '1234');
-    const code = user!.recoveryCode!;
-    expect(authService.resetPinWithRecoveryCode('alice', 'WRONG-CODE-0000', '9999').success).toBe(false);
-    const res = authService.resetPinWithRecoveryCode('alice@x.com', code.toLowerCase(), '9999');
-    expect(res.success).toBe(true);
-    expect(res.newRecoveryCode).not.toBe(code);
-    expect(authService.login('alice', '9999').success).toBe(true);
-    expect(authService.resetPinWithRecoveryCode('alice', code, '1111').success).toBe(false);
-  });
-
   it('admin can disable users, and the last admin cannot be demoted', () => {
     const alice = authService.register('Alice', 'alice', 'alice@x.com', '1234').user!;
     const bob = authService.register('Bob', 'bob', 'bob@x.com', '5678').user!;
@@ -88,6 +77,20 @@ describe('Accounts: email, sign out, delete, PIN reset, admin', () => {
     expect(authService.login('bob', '5678').error).toMatch(/disabled/);
     authService.adminSetDisabled(bob.id, false);
     expect(authService.login('bob', '5678').success).toBe(true);
+  });
+
+  it('keeps an admin available when the admin account is deleted', () => {
+    const alice = authService.register('Alice', 'alice', 'alice@x.com', '1234').user!; // first account = admin
+    const bob = authService.register('Bob', 'bob', 'bob@x.com', '5678').user!;
+    const carol = authService.register('Carol', 'carol', 'carol@x.com', '9999').user!;
+    expect(authService.getUsers().map((u) => u.role)).toEqual(['admin', 'user', 'user']);
+    authService.deleteAccount(alice.id);
+    // the oldest remaining account is promoted so the app is never without an admin
+    expect(authService.getUsers().map((u) => [u.id, u.role])).toEqual([[bob.id, 'admin'], [carol.id, 'user']]);
+    // admins can appoint more admins, and the last one cannot be demoted
+    expect(authService.adminSetRole(carol.id, 'admin').success).toBe(true);
+    expect(authService.adminSetRole(bob.id, 'user').success).toBe(true);
+    expect(authService.adminSetRole(carol.id, 'user').success).toBe(false);
   });
 
   it('promotes the oldest account to admin for accounts created before roles existed', () => {

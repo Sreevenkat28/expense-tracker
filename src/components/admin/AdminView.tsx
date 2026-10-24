@@ -65,7 +65,7 @@ export const AdminView: React.FC = () => {
     }
     setResetTargetId(null);
     setResetPinValue('');
-    changed({ kind: 'success', text: `PIN reset. Give the user their new PIN and this new recovery code: ${res.newRecoveryCode}` });
+    changed({ kind: 'success', text: 'PIN reset. Give the user their new PIN.' });
   };
 
   const handleDelete = (id: string) => {

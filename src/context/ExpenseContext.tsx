@@ -53,9 +53,6 @@ interface ExpenseContextType {
   continueAsGuest: () => void;
   deleteAccount: () => void;
   refreshCurrentUser: () => void;
-  // Recovery code to show once right after sign-up; cleared when the user dismisses it
-  pendingRecoveryCode: string | null;
-  dismissRecoveryCode: () => void;
 
   // Data
   transactions: Transaction[];
@@ -125,8 +122,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.getCurrentUser() !== null);
 
-  const [pendingRecoveryCode, setPendingRecoveryCode] = useState<string | null>(null);
-
   const login = useCallback((identifier: string, pin: string) => {
     const result = authService.login(identifier, pin);
     if (result.success && result.user) {
@@ -146,7 +141,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const register = useCallback((name: string, username: string, email: string, pin: string, currency: string = 'USD') => {
     const result = authService.register(name, username, email, pin, currency);
     if (result.success && result.user) {
-      setPendingRecoveryCode(result.user.recoveryCode ?? null);
       setCurrentUser(result.user);
       setIsAuthenticated(true);
       setGlobalCurrency(currency);
@@ -172,8 +166,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsAuthenticated(true); // guest is still "in" the app
     setData(storageService.loadData(null));
   }, []);
-
-  const dismissRecoveryCode = useCallback(() => setPendingRecoveryCode(null), []);
 
   // Re-read the signed-in profile (e.g. after an admin edits accounts); signs out if it was removed
   const refreshCurrentUser = useCallback(() => {
@@ -404,8 +396,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     continueAsGuest,
     deleteAccount,
     refreshCurrentUser,
-    pendingRecoveryCode,
-    dismissRecoveryCode,
     transactions: data.transactions,
     selectedMonth,
     setSelectedMonth: handleSetSelectedMonth,
