@@ -264,7 +264,7 @@ export const DashboardView: React.FC = () => {
           ) : (
             <div className="pt-2">
               <div className="flex items-end gap-1.5 h-44 border-b border-slate-200 dark:border-slate-700 pb-2">
-                {dailySpending.map(item => {
+                {dailySpending.map((item, idx) => {
                   const heightPct = Math.max(10, Math.round((item.amountCents / maxDailyCents) * 100));
                   const dayNum = item.date.split('-')[2];
                   return (
@@ -273,7 +273,7 @@ export const DashboardView: React.FC = () => {
                       className="flex-1 flex flex-col items-center justify-end h-full group relative cursor-pointer"
                     >
                       {/* Tooltip on hover */}
-                      <div className="absolute -top-8 bg-slate-900 text-white text-[10px] font-bold py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 shadow-md">
+                      <div className={`absolute -top-8 ${idx > dailySpending.length / 2 ? 'right-0' : 'left-0'} bg-slate-900 text-white text-[10px] font-bold py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 shadow-md`}>
                         {item.date}: {formatCurrency(item.amountCents)}
                       </div>
                       <div
@@ -362,7 +362,7 @@ export const DashboardView: React.FC = () => {
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-2">
                   {activeDonutSeg ? (
                     <>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate max-w-[120px]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-tight max-w-[120px] break-words">
                         {activeDonutSeg.category}
                       </span>
                       <span className="text-base font-extrabold text-slate-900 dark:text-white mt-0.5">
@@ -381,7 +381,7 @@ export const DashboardView: React.FC = () => {
                         {formatCurrency(totalExpensesCents)}
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        {nonZeroCategories.length} categories
+                        {nonZeroCategories.length} {nonZeroCategories.length === 1 ? 'category' : 'categories'}
                       </span>
                     </>
                   )}
@@ -395,11 +395,11 @@ export const DashboardView: React.FC = () => {
                     key={seg.category}
                     onMouseEnter={() => setHoveredCategory(seg.category)}
                     onMouseLeave={() => setHoveredCategory(null)}
-                    className="flex items-center justify-between text-xs py-1 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
+                    className="flex items-center justify-between gap-2 text-xs py-1 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
                   >
-                    <div className="flex items-center gap-2 truncate">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                      <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
+                      <span className="font-medium text-slate-700 dark:text-slate-300 break-words">
                         {seg.category}
                       </span>
                     </div>

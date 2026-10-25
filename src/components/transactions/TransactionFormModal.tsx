@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Calendar, Tag, FileText, AlertCircle } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 import {
   type TransactionType,
   EXPENSE_CATEGORIES,
@@ -113,6 +114,8 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
 
     onClose();
   };
+
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 

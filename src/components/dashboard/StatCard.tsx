@@ -38,12 +38,12 @@ export const StatCard: React.FC<StatCardProps> = ({
 
   return (
     <div className="bg-white dark:bg-slate-800/90 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-all">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             {title}
           </span>
-          <div className="text-2xl font-black text-slate-900 dark:text-white mt-1 tracking-tight">
+          <div className="text-2xl font-black text-slate-900 dark:text-white mt-1 tracking-tight break-words">
             {value}
           </div>
         </div>
@@ -52,8 +52,8 @@ export const StatCard: React.FC<StatCardProps> = ({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-xs">
-        {subtitle && <span className="text-slate-500 dark:text-slate-400 truncate mr-2">{subtitle}</span>}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-xs">
+        {subtitle && <span className="text-slate-500 dark:text-slate-400 min-w-0 break-words">{subtitle}</span>}
         {badge && (
           <span
             className={`px-2 py-0.5 rounded-full font-semibold border shrink-0 ${getBadgeClass(

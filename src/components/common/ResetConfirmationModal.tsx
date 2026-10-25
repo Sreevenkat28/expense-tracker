@@ -1,6 +1,7 @@
 import React from 'react';
 import { RotateCcw, AlertTriangle, X } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 
 interface ResetConfirmationModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
   onClose,
 }) => {
   const { resetAllData, formatAmount } = useExpense();
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 

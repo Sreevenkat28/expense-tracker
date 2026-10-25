@@ -39,3 +39,19 @@
   }
 }
 
+
+/* Touch screens: small controls are hard to hit with a finger, so give them a comfortable minimum size.
+   Mouse users on desktop are not affected. */
+@media (pointer: coarse) {
+  button,
+  select {
+    min-height: 36px;
+  }
+  button {
+    min-width: 36px;
+  }
+  input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+  }
+}

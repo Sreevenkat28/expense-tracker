@@ -88,7 +88,7 @@ const MainLayout: React.FC = () => {
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 py-5 text-xs text-slate-500 dark:text-slate-400 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-1">
             <span className="font-bold text-slate-800 dark:text-slate-200">Expense Tracker</span>
             <span>•</span>
             <span>Personal Finance & Ledger</span>
@@ -99,7 +99,7 @@ const MainLayout: React.FC = () => {
               </>
             )}
           </div>
-          <div className="flex items-center gap-3 text-slate-400">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-slate-400">
             <span>Integer Cents Arithmetic</span>
             <span>•</span>
             <span>Local & Private Storage</span>

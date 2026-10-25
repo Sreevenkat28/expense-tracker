@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserX, X } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 
 interface DeleteAccountModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface DeleteAccountModalProps {
 export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, deleteAccount } = useExpense();
   const [confirmText, setConfirmText] = useState('');
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 

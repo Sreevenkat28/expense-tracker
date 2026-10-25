@@ -244,7 +244,7 @@ export const DailyLogView: React.FC = () => {
 
       <div className="grid lg:grid-cols-5 gap-6">
         {/* Quick entry + entries list */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-4 min-w-0">
           <form onSubmit={handleAdd} className={`${card} space-y-3`}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white m-0">Add to this day</h3>
@@ -331,21 +331,21 @@ export const DailyLogView: React.FC = () => {
                 {dayTransactions.map((tx) => {
                   const style = CATEGORY_COLORS[tx.category] ?? CATEGORY_COLORS['Other'];
                   return (
-                    <div key={tx.id} className="flex items-center gap-3 py-2.5">
+                    <div key={tx.id} className="flex items-center gap-2 sm:gap-3 py-2.5 min-w-0">
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/60'}`}>
                         {tx.type === 'income' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">{tx.description}</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white break-words">{tx.description}</div>
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${style.bg} ${style.text}`}>{tx.category}</span>
                       </div>
-                      <div className={`text-sm font-black ${tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <div className={`text-sm font-black shrink-0 text-right ${tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {tx.type === 'income' ? '+' : '-'}{formatAmount(tx.amountCents)}
                       </div>
-                      <button onClick={() => setEditingTransaction(tx)} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer" aria-label="Edit">
+                      <button onClick={() => setEditingTransaction(tx)} className="p-2 sm:p-1.5 shrink-0 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer" aria-label="Edit">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => deleteTransaction(tx.id)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer" aria-label="Delete">
+                      <button onClick={() => deleteTransaction(tx.id)} className="p-2 sm:p-1.5 shrink-0 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer" aria-label="Delete">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -357,7 +357,7 @@ export const DailyLogView: React.FC = () => {
         </div>
 
         {/* Side: category split + last 7 days */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4 min-w-0">
           <div className={card}>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white m-0 mb-3">Where the money went</h3>
             {totals.categories.length === 0 ? (

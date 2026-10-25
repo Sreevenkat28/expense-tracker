@@ -63,7 +63,7 @@ export const Navbar: React.FC = () => {
   ];
 
   return (
-    <nav className="bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 sticky top-[69px] z-20 transition-colors">
+    <nav className="bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 sticky top-0 md:top-[var(--header-h,69px)] z-20 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex space-x-1 sm:space-x-3 overflow-x-auto py-2 scrollbar-none">
           {navItems.map((item) => {

@@ -78,7 +78,7 @@ export const AdminView: React.FC = () => {
   const adminCount = users.filter((u) => u.role === 'admin').length;
   const guestTxCount = storageService.countTransactions(null);
 
-  const actionBtn = 'inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors cursor-pointer';
+  const actionBtn = 'inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-2 sm:py-1.5 text-[11px] font-semibold rounded-lg border transition-colors cursor-pointer';
 
   return (
     <div className="space-y-6">
@@ -142,14 +142,14 @@ export const AdminView: React.FC = () => {
                       <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">YOU</span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-words">
                     {u.email ?? 'No email on file'} · {u.transactionCount} transactions · joined {formatDate(u.createdAt.slice(0, 10))}
                     {u.lastLoginAt ? ` · last login ${formatDate(u.lastLoginAt.slice(0, 10))}` : ''}
                   </div>
                 </div>
 
                 {!isSelf && (
-                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                  <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
                     <button
                       onClick={() => handleToggleRole(u.id, u.role !== 'admin')}
                       className={`${actionBtn} border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40`}

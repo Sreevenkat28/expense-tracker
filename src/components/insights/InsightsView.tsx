@@ -45,7 +45,7 @@ export const InsightsView: React.FC = () => {
             <Award className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             <span>Highest Spending Category</span>
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-white mt-2 truncate">
+          <div className="text-xl font-bold text-slate-900 dark:text-white mt-2 break-words">
             {topCategory ? topCategory.category : 'None'}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">

@@ -82,9 +82,9 @@ export const RecentTransactionsList: React.FC = () => {
             return (
               <div
                 key={tx.id}
-                className="py-3 flex items-center justify-between group hover:bg-slate-50/70 dark:hover:bg-slate-700/40 px-2 -mx-2 rounded-xl transition-colors"
+                className="py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 group hover:bg-slate-50/70 dark:hover:bg-slate-700/40 px-2 -mx-2 rounded-xl transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1 basis-48">
                   <div
                     className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                       isIncome
@@ -99,10 +99,10 @@ export const RecentTransactionsList: React.FC = () => {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white break-words">
                       {tx.description}
                     </p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                       <span className="text-xs text-slate-400">{formatDate(tx.date)}</span>
                       <span
                         className={`text-[10px] px-2 py-0.2 rounded-full font-medium border ${catStyle.bg} ${catStyle.text} ${catStyle.border}`}
@@ -113,7 +113,7 @@ export const RecentTransactionsList: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0 ml-4">
+                <div className="flex items-center gap-3 shrink-0 ml-auto pl-12 sm:pl-0">
                   <span
                     className={`text-sm font-bold ${
                       isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
@@ -127,14 +127,14 @@ export const RecentTransactionsList: React.FC = () => {
                     <button
                       onClick={() => setEditingTransaction(tx)}
                       aria-label="Edit transaction"
-                      className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                      className="p-2 sm:p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => deleteTransaction(tx.id)}
                       aria-label="Delete transaction"
-                      className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                      className="p-2 sm:p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Upload, X, FileSpreadsheet, AlertTriangle, CheckCircle2, Download } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 import {
   parseTransactionsCSV,
   transactionFingerprint,
@@ -28,6 +29,7 @@ export const ImportCSVModal: React.FC<ImportCSVModalProps> = ({ isOpen, onClose 
     const rows = parsed.transactions.filter((t) => !existing.has(transactionFingerprint(t)));
     return { newRows: rows, duplicateCount: parsed.transactions.length - rows.length };
   }, [parsed, transactions]);
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 

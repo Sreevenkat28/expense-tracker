@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 import { parseSmartTransaction } from '../../services/aiService';
 import {
   EXPENSE_CATEGORIES,
@@ -45,6 +46,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   } | null>(null);
   const [hasParsed, setHasParsed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
 

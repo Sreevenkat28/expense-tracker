@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
+import { useEscapeKey } from '../../utils/useEscapeKey';
 import { centsToDollars, isValidAmount } from '../../utils/currency';
 import { SavingsGoal } from '../../types';
 
@@ -45,6 +46,8 @@ export const SavingsGoalsView: React.FC = () => {
   const [goalCategory, setGoalCategory] = useState('General');
   const [goalColor, setGoalColor] = useState('#10b981');
   const [formError, setFormError] = useState<string | null>(null);
+  useEscapeKey(showAddModal, () => setShowAddModal(false));
+  useEscapeKey(contributeGoal !== null, () => setContributeGoal(null));
 
   const totalTargetCents = savingsGoals.reduce((sum, g) => sum + g.targetCents, 0);
   const totalSavedCents = savingsGoals.reduce((sum, g) => sum + g.currentCents, 0);
@@ -240,20 +243,20 @@ export const SavingsGoalsView: React.FC = () => {
                 <div>
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-3.5 h-3.5 rounded-full shrink-0"
                         style={{ backgroundColor: accentColor }}
                       />
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white break-words min-w-0 m-0">
                         {goal.name}
                       </h3>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenEdit(goal)}
-                        className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
+                        className="p-1.5 sm:p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
                         title="Edit goal"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -264,7 +267,7 @@ export const SavingsGoalsView: React.FC = () => {
                             deleteSavingsGoal(goal.id);
                           }
                         }}
-                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md cursor-pointer"
+                        className="p-1.5 sm:p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md cursor-pointer"
                         title="Delete goal"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

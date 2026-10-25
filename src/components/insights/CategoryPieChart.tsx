@@ -94,10 +94,10 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
         {/* Center Label */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-4">
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider truncate max-w-[110px]">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-tight max-w-[110px] break-words">
             {hoveredCategory || 'Total Spend'}
           </span>
-          <span className="text-base font-bold text-slate-900 mt-0.5">
+          <span className="text-base font-bold text-slate-900 dark:text-white mt-0.5">
             {hoveredCategory && highlightedItem
               ? formatCurrency(highlightedItem.amountCents)
               : formatCurrency(totalExpensesCents)}
@@ -105,7 +105,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           <span className="text-[10px] text-slate-400 font-semibold mt-0.5">
             {hoveredCategory && highlightedItem
               ? `${highlightedItem.percentage.toFixed(1)}%`
-              : `${activeSpendings.length} categories`}
+              : `${activeSpendings.length} ${activeSpendings.length === 1 ? 'category' : 'categories'}`}
           </span>
         </div>
       </div>

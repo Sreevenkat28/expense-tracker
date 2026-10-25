@@ -285,10 +285,10 @@ export const BudgetView: React.FC = () => {
 
               return (
                 <div key={catName} className="p-3.5 bg-slate-50/70 dark:bg-slate-900/40 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: catColor }} />
-                      <span className="font-bold text-slate-800 dark:text-white">{catName}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: catColor }} />
+                      <span className="font-bold text-slate-800 dark:text-white break-words">{catName}</span>
                       {isCatExceeded && (
                         <span className="text-[10px] bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-2 py-0.2 rounded-full font-bold">
                           Exceeded
@@ -296,14 +296,14 @@ export const BudgetView: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 ml-auto">
                       <span className="text-slate-600 dark:text-slate-300 font-semibold">
                         {formatCurrency(spentCents)} of {formatCurrency(limitCents)}
                         <span className="text-slate-400 ml-1">({pctUsed.toFixed(0)}%)</span>
                       </span>
                       <button
                         onClick={() => deleteCategoryBudget(catName)}
-                        className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                        className="text-slate-400 hover:text-rose-500 p-2 sm:p-1 cursor-pointer"
                         title="Remove category limit"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
