@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Wallet,
   Lock,
@@ -8,12 +8,14 @@ import {
   ArrowRight,
   Sparkles,
   AlertCircle,
+  CheckCircle2,
+  Loader2,
   Coins,
   Mail,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { authService } from '../../services/authService';
-import { checkEmailIsReal } from '../../services/emailCheck';
+import { checkEmailIsReal, emailFormatError } from '../../services/emailCheck';
 import { ResetPinForm } from './ResetPinForm';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
@@ -36,6 +38,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [regName, setRegName] = useState('');
   const [regUsername, setRegUsername] = useState('');
   const [regEmail, setRegEmail] = useState('');
+  // Live feedback under the email box: checked when you leave the field and again on submit
+  const [emailStatus, setEmailStatus] = useState<{ kind: 'idle' | 'checking' | 'ok' | 'warn' | 'error'; text?: string }>({ kind: 'idle' });
+  const emailCheckId = useRef(0);
+
+  const checkRegEmail = async (value: string) => {
+    const id = ++emailCheckId.current;
+    if (!value.trim()) {
+      setEmailStatus({ kind: 'idle' });
+      return;
+    }
+    const formatError = emailFormatError(value);
+    if (formatError) {
+      setEmailStatus({ kind: 'error', text: formatError });
+      return;
+    }
+    setEmailStatus({ kind: 'checking', text: 'Checking this email address…' });
+    const res = await checkEmailIsReal(value);
+    if (id !== emailCheckId.current) return; // the field changed while checking
+    if (!res.ok) setEmailStatus({ kind: 'error', text: res.error });
+    else if (res.unverified) setEmailStatus({ kind: 'warn', text: 'Format looks fine, but the email domain could not be checked right now.' });
+    else setEmailStatus({ kind: 'ok', text: 'This email address looks valid.' });
+  };
   const [regPin, setRegPin] = useState('');
   const [regCurrency, setRegCurrency] = useState('USD');
 
@@ -93,6 +117,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     const real = await checkEmailIsReal(regEmail);
     setBusy(false);
     if (!real.ok) {
+      setEmailStatus({ kind: 'error', text: real.error });
       setErrorMsg(real.error || 'Please use a real email address.');
       return;
     }
@@ -323,10 +348,41 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   placeholder="e.g. name@gmail.com"
                   autoComplete="email"
                   value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  onChange={(e) => {
+                    setRegEmail(e.target.value);
+                    emailCheckId.current++;
+                    setEmailStatus({ kind: 'idle' });
+                  }}
+                  onBlur={(e) => void checkRegEmail(e.target.value)}
+                  aria-invalid={emailStatus.kind === 'error'}
+                  className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 ${
+                    emailStatus.kind === 'error'
+                      ? 'border-rose-400 dark:border-rose-700 focus:ring-rose-500/20 focus:border-rose-500'
+                      : emailStatus.kind === 'ok'
+                      ? 'border-emerald-400 dark:border-emerald-700 focus:ring-emerald-500/20 focus:border-emerald-500'
+                      : 'border-slate-200 dark:border-slate-700 focus:ring-emerald-500/20 focus:border-emerald-500'
+                  }`}
                 />
               </div>
+              {emailStatus.kind !== 'idle' && (
+                <p
+                  className={`mt-1.5 mb-0 text-xs flex items-center gap-1.5 ${
+                    emailStatus.kind === 'error'
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : emailStatus.kind === 'ok'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : emailStatus.kind === 'warn'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                  role={emailStatus.kind === 'error' ? 'alert' : 'status'}
+                >
+                  {emailStatus.kind === 'checking' && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
+                  {emailStatus.kind === 'ok' && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                  {(emailStatus.kind === 'error' || emailStatus.kind === 'warn') && <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                  <span>{emailStatus.text}</span>
+                </p>
+              )}
             </div>
 
             <div>

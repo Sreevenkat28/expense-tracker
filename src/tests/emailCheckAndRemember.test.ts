@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { checkEmailIsReal } from '../services/emailCheck';
+import { checkEmailIsReal, emailFormatError, isValidEmail } from '../services/emailCheck';
 import { authService } from '../services/authService';
 
 class MemoryStorage {
@@ -44,6 +44,29 @@ describe('Real email check', () => {
     expect((await checkEmailIsReal('a@small.example.io', f)).ok).toBe(true);
     const offline = vi.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;
     expect((await checkEmailIsReal('a@gmail.com', offline)).ok).toBe(true);
+  });
+});
+
+describe('Email format', () => {
+  it('accepts normal addresses', () => {
+    for (const ok of ['sree@gmail.com', 'first.last+tag@sub.example.co.in', "o'brien@example.org", 'a_b-c@my-site.io', 'x@xn--bcher-kva.de'])
+      expect(emailFormatError(ok), ok).toBeNull();
+  });
+
+  it('rejects malformed addresses that used to slip through', () => {
+    for (const bad of [
+      'user..name@gmail.com', '.user@gmail.com', 'user.@gmail.com', 'user@gmail..com', 'x@gmail.com.',
+      'user@-bad.com', 'user@bad-.com', 'user name@gmail.com', 'user@@gmail.com', 'user@gmail', 'user@localhost',
+      'a@b.c', '@gmail.com', 'user@', 'user@gmail.c0m', 'user@123.456', `${'a'.repeat(65)}@gmail.com`, '',
+    ])
+      expect(isValidEmail(bad), bad).toBe(false);
+  });
+
+  it('flags a domain the DNS server calls malformed, and reports an unreachable lookup as unverified', async () => {
+    const formerr = vi.fn(async () => new Response(JSON.stringify({ Status: 1 }))) as unknown as typeof fetch;
+    expect((await checkEmailIsReal('a@weird.example', formerr)).ok).toBe(false);
+    const down = vi.fn(async () => { throw new Error('blocked'); }) as unknown as typeof fetch;
+    expect(await checkEmailIsReal('a@gmail.com', down)).toEqual({ ok: true, unverified: true });
   });
 });
 

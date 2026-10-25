@@ -29,6 +29,9 @@ export const Header: React.FC = () => {
     setDark,
     currency,
     setCurrency,
+    exchangeRateNote,
+    ratesSource,
+    ratesUpdatedAt,
     currentUser,
     logout,
   } = useExpense();
@@ -171,6 +174,19 @@ export const Header: React.FC = () => {
             </select>
             <span className="pointer-events-none absolute right-2 text-[9px] text-slate-400">▼</span>
           </div>
+          {currency !== 'USD' && (
+            <span
+              className="hidden lg:inline text-[10px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap"
+              title={
+                ratesSource === 'fallback'
+                  ? 'Approximate rate: live rates could not be loaded yet'
+                  : `Live rate${ratesUpdatedAt ? `, updated ${new Date(ratesUpdatedAt).toLocaleString()}` : ''}`
+              }
+            >
+              {exchangeRateNote}
+              {ratesSource === 'fallback' ? ' (approx.)' : ''}
+            </span>
+          )}
 
           {/* Reset Ledger Button */}
           <button

@@ -158,6 +158,15 @@ export const authService = {
     }
   },
 
+  /** Saves the display currency the user picked so it survives reloads and log in. */
+  setCurrency(userId: string, currency: string): UserProfile | null {
+    const users = this.getUsers();
+    if (!users.some((u) => u.id === userId)) return null;
+    const updated = users.map((u) => (u.id === userId ? { ...u, currency } : u));
+    this.saveUsers(updated);
+    return updated.find((u) => u.id === userId) ?? null;
+  },
+
   /** Remember this account on this device so the login screen can pre-fill it. Only the id is stored, never the PIN. */
   rememberAccount(userId: string): void {
     try {

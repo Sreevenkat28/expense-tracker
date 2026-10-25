@@ -1,7 +1,26 @@
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const LOCAL_CHARS = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$/;
+const DOMAIN_LABEL = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+
+/** Why an address is malformed, or null if the format is fine. */
+export function emailFormatError(email: string): string | null {
+  const value = email.trim();
+  const generic = 'Please enter a valid email address (e.g. name@example.com).';
+  if (!value) return 'Enter your email address.';
+  if (value.length > 254 || /\s/.test(value)) return generic;
+  const parts = value.split('@');
+  if (parts.length !== 2) return generic;
+  const [local, domain] = parts;
+  if (!local || local.length > 64 || !LOCAL_CHARS.test(local)) return generic;
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return generic;
+  const labels = domain.split('.');
+  if (labels.length < 2 || !labels.every((l) => DOMAIN_LABEL.test(l))) return generic;
+  const tld = labels[labels.length - 1];
+  if (!/^(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{2,59})$/.test(tld)) return generic;
+  return null;
+}
 
 export function isValidEmail(email: string): boolean {
-  return EMAIL_PATTERN.test(email.trim());
+  return emailFormatError(email) === null;
 }
 
 // ─── "Is this a real email?" ────────────────────────────────────────────────
@@ -51,10 +70,11 @@ async function dnsLookup(domain: string, type: 'MX' | 'A', fetchImpl: typeof fet
 export async function checkEmailIsReal(
   email: string,
   fetchImpl: typeof fetch = (...args) => fetch(...args)
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; unverified?: boolean }> {
   const clean = email.trim().toLowerCase();
-  if (!isValidEmail(clean)) {
-    return { ok: false, error: 'Please enter a valid email address (e.g. name@example.com).' };
+  const formatError = emailFormatError(clean);
+  if (formatError) {
+    return { ok: false, error: formatError };
   }
   const domain = clean.split('@')[1];
   if (DOMAIN_TYPOS[domain]) {
@@ -66,6 +86,9 @@ export async function checkEmailIsReal(
 
   try {
     const mx = await dnsLookup(domain, 'MX', fetchImpl);
+    if (mx.status === 1) {
+      return { ok: false, error: `"${domain}" is not a valid email domain. Check the spelling of your email.` };
+    }
     if (mx.status === 3) {
       return { ok: false, error: `The domain "${domain}" does not exist. Check the spelling of your email.` };
     }
@@ -77,7 +100,7 @@ export async function checkEmailIsReal(
     if (a.answers.some((r) => r.type === 1)) return { ok: true };
     return { ok: false, error: `"${domain}" cannot receive email. Use a real email address.` };
   } catch {
-    // The lookup itself failed (offline / blocked): don't lock people out of signing up
-    return { ok: true };
+    // The lookup itself failed (offline / blocked): the format is fine, so don't lock people out
+    return { ok: true, unverified: true };
   }
 }

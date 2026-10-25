@@ -21,7 +21,8 @@ export type Category = ExpenseCategory | IncomeCategory;
 export interface Transaction {
   id: string;
   type: TransactionType;
-  amountCents: number; // Stored in integer cents (e.g. 1599 = $15.99)
+  amountCents: number; // Stored in integer cents (e.g. 1599 = $15.99), in `currency`
+  currency?: string; // currency the amount was entered in; converted for display when you switch
   description: string;
   category: Category;
   date: string; // ISO format 'YYYY-MM-DD'
@@ -33,6 +34,7 @@ export interface SavingsGoal {
   name: string;
   targetCents: number;
   currentCents: number;
+  currency?: string; // currency targetCents / currentCents are stored in
   targetDate?: string;
   category?: string;
   color?: string;
@@ -44,6 +46,10 @@ export interface BudgetConfig {
   monthBudgets?: Record<string, number>; // Month-specific budget overrides, keyed by 'YYYY-MM'
   categoryBudgets?: Record<string, number>; // Category-specific spending limits in cents
   openingBalanceCents: number; // Starting account balance in cents
+  currency?: string; // default currency for the amounts in this config
+  // Per-field override (keys: 'monthly', 'opening', 'month:YYYY-MM', 'cat:<category>') so editing one
+  // field in another currency never re-rounds the others
+  fieldCurrencies?: Record<string, string>;
 }
 
 export interface MonthSummary {

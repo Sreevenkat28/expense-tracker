@@ -12,6 +12,15 @@ import { UserProfile } from '../types/auth';
 import { storageService } from '../services/storage';
 import { authService } from '../services/authService';
 import { getCurrentYearMonth } from '../utils/dates';
+import { RateSnapshot, getCachedRates, loadRates, convertCents, describeRate } from '../utils/exchange';
+import {
+  convertLedger,
+  convertBudgetConfig,
+  convertGoal,
+  withFieldCurrency,
+  withoutFieldCurrency,
+  stampLegacyCurrency,
+} from '../utils/ledgerCurrency';
 import {
   formatCurrency,
   getCurrencyInfo,
@@ -74,6 +83,10 @@ interface ExpenseContextType {
   setCurrency: (code: string) => void;
   currencyInfo: CurrencyInfo;
   formatAmount: (cents: number, showSign?: boolean) => string;
+  // Exchange rates used when switching currency
+  exchangeRateNote: string; // e.g. "1 USD = 95 INR"
+  ratesSource: 'live' | 'cached' | 'fallback';
+  ratesUpdatedAt: number | null;
 
   // Financial calculations for selectedMonth
   monthSummary: MonthSummary;
@@ -117,6 +130,17 @@ interface ExpenseContextType {
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
 
+/**
+ * Loads a ledger from storage. Data saved before currencies were tracked is stamped (and saved)
+ * with the account's original currency, so it converts correctly from then on.
+ */
+function loadLedger(userId: string | null, legacyCurrency: string) {
+  const loaded = storageService.loadData(userId);
+  const { data, changed } = stampLegacyCurrency(loaded, legacyCurrency);
+  if (changed) storageService.saveData(data.transactions, data.budgetConfig, data.savingsGoals, userId);
+  return data;
+}
+
 export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // ─── Auth State ─────────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser());
@@ -133,7 +157,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setCurrencyState(result.user.currency);
       }
       // Reload data scoped to this user
-      setData(storageService.loadData(result.user.id));
+      setData(loadLedger(result.user.id, result.user.currency ?? 'USD'));
     }
     return { success: result.success, error: result.error };
   }, []);
@@ -145,7 +169,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsAuthenticated(true);
       setGlobalCurrency(currency);
       setCurrencyState(currency);
-      setData(storageService.loadData(result.user.id));
+      setData(loadLedger(result.user.id, currency));
     }
     return { success: result.success, error: result.error };
   }, []);
@@ -154,7 +178,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     authService.logout();
     setCurrentUser(null);
     setIsAuthenticated(false);
-    setData(storageService.loadData(null));
+    setData(loadLedger(null, getGlobalCurrency()));
     setSelectedMonth(getCurrentYearMonth());
     setSelectedDate(null);
     setActiveTabRaw('dashboard');
@@ -164,7 +188,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     authService.logout();
     setCurrentUser(null);
     setIsAuthenticated(true); // guest is still "in" the app
-    setData(storageService.loadData(null));
+    setData(loadLedger(null, getGlobalCurrency()));
   }, []);
 
   // Re-read the signed-in profile (e.g. after an admin edits accounts); signs out if it was removed
@@ -176,9 +200,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [currentUser, logout]);
 
   // ─── Data State ──────────────────────────────────────────────────────────────
-  const [data, setData] = useState(() =>
-    storageService.loadData(authService.getCurrentUser()?.id ?? null)
-  );
+  const [data, setData] = useState(() => {
+    const user = authService.getCurrentUser();
+    return loadLedger(user?.id ?? null, user?.currency ?? getGlobalCurrency());
+  });
   const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentYearMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [activeTab, setActiveTabRaw] = useState<NavigationTab>('dashboard');
@@ -200,7 +225,28 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const setCurrency = useCallback((code: string) => {
     setGlobalCurrency(code);
     setCurrencyState(code);
+    // Remember the choice for this account so it survives reloads and the next log in
+    if (currentUser) {
+      const updated = authService.setCurrency(currentUser.id, code);
+      if (updated) setCurrentUser(updated);
+    }
+  }, [currentUser]);
+
+  // Exchange rates: cached/approximate ones immediately, live ones as soon as they load
+  const [rateInfo, setRateInfo] = useState<RateSnapshot>(() => getCachedRates());
+  useEffect(() => {
+    let cancelled = false;
+    loadRates().then((snapshot) => {
+      if (!cancelled) setRateInfo(snapshot);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+  const rates = rateInfo.rates;
+
+  // Everything the screens see is converted to the selected currency; `data` keeps the originals
+  const view = useMemo(() => convertLedger(data, currency, rates), [data, currency, rates]);
 
   const currencyInfo = useMemo(() => getCurrencyInfo(currency), [currency]);
 
@@ -257,16 +303,22 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addTransaction = useCallback((txData: Omit<Transaction, 'id' | 'createdAt'>) => {
     const newTx: Transaction = {
       ...txData,
+      currency: txData.currency ?? currency,
       id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       createdAt: new Date().toISOString(),
     };
     syncStorage([newTx, ...data.transactions], data.budgetConfig, data.savingsGoals);
-  }, [data, syncStorage]);
+  }, [data, currency, syncStorage]);
 
   const updateTransaction = useCallback((id: string, txData: Partial<Transaction>) => {
-    const updated = data.transactions.map((tx) => tx.id === id ? { ...tx, ...txData } : tx);
+    // A new amount is always typed in the selected currency, so it is saved in that currency
+    const updated = data.transactions.map((tx) =>
+      tx.id === id
+        ? { ...tx, ...txData, ...(txData.amountCents !== undefined ? { currency: txData.currency ?? currency } : {}) }
+        : tx
+    );
     syncStorage(updated, data.budgetConfig, data.savingsGoals);
-  }, [data, syncStorage]);
+  }, [data, currency, syncStorage]);
 
   const deleteTransaction = useCallback((id: string) => {
     const updated = data.transactions.filter((tx) => tx.id !== id);
@@ -277,62 +329,84 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const now = new Date().toISOString();
     const imported: Transaction[] = rows.map((row, i) => ({
       ...row,
+      currency: row.currency ?? currency,
       id: `tx-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
       createdAt: now,
     }));
     syncStorage([...imported, ...data.transactions], data.budgetConfig, data.savingsGoals);
-  }, [data, syncStorage]);
+  }, [data, currency, syncStorage]);
 
   // ─── Budgets ─────────────────────────────────────────────────────────────────
   const updateBudget = useCallback((budgetCents: number, monthSpecific: boolean = false) => {
+    const cfg = data.budgetConfig;
     const newConfig: BudgetConfig = monthSpecific
-      ? { ...data.budgetConfig, monthBudgets: { ...(data.budgetConfig.monthBudgets || {}), [selectedMonth]: budgetCents } }
-      : { ...data.budgetConfig, monthlyBudgetCents: budgetCents, monthBudgets: { ...(data.budgetConfig.monthBudgets || {}), [selectedMonth]: budgetCents } };
+      ? withFieldCurrency(
+          { ...cfg, monthBudgets: { ...(cfg.monthBudgets || {}), [selectedMonth]: budgetCents } },
+          ['month:' + selectedMonth],
+          currency
+        )
+      : withFieldCurrency(
+          { ...cfg, monthlyBudgetCents: budgetCents, monthBudgets: { ...(cfg.monthBudgets || {}), [selectedMonth]: budgetCents } },
+          ['monthly', 'month:' + selectedMonth],
+          currency
+        );
     syncStorage(data.transactions, newConfig, data.savingsGoals);
-  }, [data, selectedMonth, syncStorage]);
+  }, [data, selectedMonth, currency, syncStorage]);
 
   const setCategoryBudget = useCallback((category: string, limitCents: number) => {
-    const newConfig: BudgetConfig = { ...data.budgetConfig, categoryBudgets: { ...(data.budgetConfig.categoryBudgets || {}), [category]: limitCents } };
+    const newConfig = withFieldCurrency(
+      { ...data.budgetConfig, categoryBudgets: { ...(data.budgetConfig.categoryBudgets || {}), [category]: limitCents } },
+      ['cat:' + category],
+      currency
+    );
     syncStorage(data.transactions, newConfig, data.savingsGoals);
-  }, [data, syncStorage]);
+  }, [data, currency, syncStorage]);
 
   const deleteCategoryBudget = useCallback((category: string) => {
     const cats = { ...(data.budgetConfig.categoryBudgets || {}) };
     delete cats[category];
-    syncStorage(data.transactions, { ...data.budgetConfig, categoryBudgets: cats }, data.savingsGoals);
+    syncStorage(data.transactions, withoutFieldCurrency({ ...data.budgetConfig, categoryBudgets: cats }, 'cat:' + category), data.savingsGoals);
   }, [data, syncStorage]);
 
   const updateOpeningBalance = useCallback((cents: number) => {
-    syncStorage(data.transactions, { ...data.budgetConfig, openingBalanceCents: cents }, data.savingsGoals);
-  }, [data, syncStorage]);
+    syncStorage(data.transactions, withFieldCurrency({ ...data.budgetConfig, openingBalanceCents: cents }, ['opening'], currency), data.savingsGoals);
+  }, [data, currency, syncStorage]);
 
   // ─── Savings Goals ────────────────────────────────────────────────────────────
   const addSavingsGoal = useCallback((goalData: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
-    const newGoal: SavingsGoal = { ...goalData, id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, createdAt: new Date().toISOString() };
+    const newGoal: SavingsGoal = { ...goalData, currency: goalData.currency ?? currency, id: `goal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, createdAt: new Date().toISOString() };
     syncStorage(data.transactions, data.budgetConfig, [...data.savingsGoals, newGoal]);
-  }, [data, syncStorage]);
+  }, [data, currency, syncStorage]);
 
   const updateSavingsGoal = useCallback((id: string, goalData: Partial<SavingsGoal>) => {
-    syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.map((g) => g.id === id ? { ...g, ...goalData } : g));
-  }, [data, syncStorage]);
+    const touchesAmounts = goalData.targetCents !== undefined || goalData.currentCents !== undefined;
+    syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.map((g) => {
+      if (g.id !== id) return g;
+      // New amounts are typed in the selected currency: bring the goal into it first
+      return touchesAmounts ? { ...convertGoal(g, currency, rates), ...goalData } : { ...g, ...goalData };
+    }));
+  }, [data, currency, rates, syncStorage]);
 
   const deleteSavingsGoal = useCallback((id: string) => {
     syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.filter((g) => g.id !== id));
   }, [data, syncStorage]);
 
   const contributeToSavingsGoal = useCallback((id: string, deltaCents: number) => {
-    syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.map((g) =>
-      g.id === id ? { ...g, currentCents: Math.max(0, g.currentCents + deltaCents) } : g
-    ));
-  }, [data, syncStorage]);
+    syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.map((g) => {
+      if (g.id !== id) return g;
+      // The amount is in the selected currency; add it to the goal in the goal's own currency
+      const delta = convertCents(deltaCents, currency, g.currency ?? currency, rates);
+      return { ...g, currentCents: Math.max(0, g.currentCents + delta) };
+    }));
+  }, [data, currency, rates, syncStorage]);
 
   // ─── Reset ────────────────────────────────────────────────────────────────────
   const resetToCleanAccount = useCallback((openingBalanceCents: number = 0, defaultBudgetCents: number = 0) => {
     const freshClean = storageService.resetToCleanAccount(openingBalanceCents, defaultBudgetCents, currentUser?.id ?? null);
-    setData(freshClean);
+    setData({ ...freshClean, budgetConfig: { ...freshClean.budgetConfig, currency } });
     setSelectedMonth(getCurrentYearMonth());
     setSelectedDate(null);
-  }, [currentUser]);
+  }, [currentUser, currency]);
 
   const resetAllData = useCallback(() => resetToCleanAccount(0, 0), [resetToCleanAccount]);
 
@@ -348,37 +422,37 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const set = new Set<string>();
     set.add(selectedMonth);
     set.add(getCurrentYearMonth());
-    for (const tx of data.transactions) {
+    for (const tx of view.transactions) {
       if (tx.date && tx.date.length >= 7) set.add(tx.date.substring(0, 7));
     }
     return Array.from(set).sort().reverse();
-  }, [data.transactions, selectedMonth]);
+  }, [view.transactions, selectedMonth]);
 
   const currentMonthBudgetCents = useMemo(() => {
-    if (data.budgetConfig.monthBudgets?.[selectedMonth] !== undefined) {
-      return data.budgetConfig.monthBudgets[selectedMonth];
+    if (view.budgetConfig.monthBudgets?.[selectedMonth] !== undefined) {
+      return view.budgetConfig.monthBudgets[selectedMonth];
     }
-    return data.budgetConfig.monthlyBudgetCents;
-  }, [data.budgetConfig, selectedMonth]);
+    return view.budgetConfig.monthlyBudgetCents;
+  }, [view.budgetConfig, selectedMonth]);
 
   const monthSummary = useMemo(() =>
-    calculateMonthSummary(data.transactions, selectedMonth, data.budgetConfig.openingBalanceCents, currentMonthBudgetCents),
-    [data.transactions, selectedMonth, data.budgetConfig.openingBalanceCents, currentMonthBudgetCents]
+    calculateMonthSummary(view.transactions, selectedMonth, view.budgetConfig.openingBalanceCents, currentMonthBudgetCents),
+    [view.transactions, selectedMonth, view.budgetConfig.openingBalanceCents, currentMonthBudgetCents]
   );
 
   const categorySpendings = useMemo(() =>
-    calculateCategorySpending(data.transactions, selectedMonth),
-    [data.transactions, selectedMonth]
+    calculateCategorySpending(view.transactions, selectedMonth),
+    [view.transactions, selectedMonth]
   );
 
   const monthComparison = useMemo(() =>
-    calculateMonthComparison(data.transactions, selectedMonth),
-    [data.transactions, selectedMonth]
+    calculateMonthComparison(view.transactions, selectedMonth),
+    [view.transactions, selectedMonth]
   );
 
   const savingsSuggestions = useMemo(() =>
-    generateSavingsSuggestions(monthSummary, categorySpendings, monthComparison, data.transactions),
-    [monthSummary, categorySpendings, monthComparison, data.transactions]
+    generateSavingsSuggestions(monthSummary, categorySpendings, monthComparison, view.transactions),
+    [monthSummary, categorySpendings, monthComparison, view.transactions]
   );
 
   const patternSummaries = useMemo(() =>
@@ -396,7 +470,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     continueAsGuest,
     deleteAccount,
     refreshCurrentUser,
-    transactions: data.transactions,
+    transactions: view.transactions,
     selectedMonth,
     setSelectedMonth: handleSetSelectedMonth,
     selectedDate,
@@ -404,15 +478,18 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     allMonths,
     activeTab,
     setActiveTab,
-    budgetConfig: data.budgetConfig,
+    budgetConfig: view.budgetConfig,
     isSampleData: false,
-    savingsGoals: data.savingsGoals,
+    savingsGoals: view.savingsGoals,
     dark,
     setDark,
     currency,
     setCurrency,
     currencyInfo,
     formatAmount,
+    exchangeRateNote: describeRate('USD', currency, rates),
+    ratesSource: rateInfo.source,
+    ratesUpdatedAt: rateInfo.updatedAt,
     monthSummary,
     categorySpendings,
     monthComparison,
