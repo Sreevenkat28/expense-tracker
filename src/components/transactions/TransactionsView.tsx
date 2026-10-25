@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Search,
   Plus,
@@ -48,10 +48,13 @@ export const TransactionsView: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   const [scopeFilter, setScopeFilter] = useState<'day' | 'month' | 'all'>(selectedDate ? 'day' : 'month');
 
-  // Picking a day in the header calendar narrows the list to that day; clearing it returns to the month
-  useEffect(() => {
-    setScopeFilter((prev) => (selectedDate ? 'day' : prev === 'day' ? 'month' : prev));
-  }, [selectedDate]);
+  // Picking a day in the header calendar narrows the list to that day; clearing it returns to the month.
+  // (State adjusted while rendering when the day changes, which avoids an extra effect-driven render.)
+  const [seenDate, setSeenDate] = useState(selectedDate);
+  if (seenDate !== selectedDate) {
+    setSeenDate(selectedDate);
+    setScopeFilter(selectedDate ? 'day' : scopeFilter === 'day' ? 'month' : scopeFilter);
+  }
 
   // All available categories for filter dropdown
   const allCategories = useMemo(() => {
@@ -108,6 +111,21 @@ export const TransactionsView: React.FC = () => {
 
     return result;
   }, [transactions, selectedMonth, selectedDate, scopeFilter, typeFilter, categoryFilter, searchQuery, sortBy]);
+
+  // Entries in the chosen scope before type / category / search filters, so the count reads "N of M"
+  const scopeTotal = useMemo(
+    () =>
+      transactions.filter((tx) =>
+        scopeFilter === 'day' && selectedDate
+          ? tx.date === selectedDate
+          : scopeFilter === 'month'
+          ? tx.date.startsWith(selectedMonth)
+          : true
+      ).length,
+    [transactions, scopeFilter, selectedDate, selectedMonth]
+  );
+  const scopeLabel =
+    scopeFilter === 'day' && selectedDate ? formatDate(selectedDate) : scopeFilter === 'month' ? formatMonthName(selectedMonth) : 'all time';
 
   // Aggregate totals for the filtered results
   const summaryTotals = useMemo(() => {
@@ -297,7 +315,8 @@ export const TransactionsView: React.FC = () => {
         {/* Filter Summary Metrics */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
           <div>
-            Showing <span className="font-bold text-slate-800 dark:text-slate-200">{summaryTotals.count}</span> matching transaction{summaryTotals.count === 1 ? '' : 's'}
+            Showing <span className="font-bold text-slate-800 dark:text-slate-200">{summaryTotals.count}</span> of{' '}
+            <span className="font-bold text-slate-800 dark:text-slate-200">{scopeTotal}</span> transaction{scopeTotal === 1 ? '' : 's'} in {scopeLabel}
           </div>
 
           <div className="flex items-center gap-4">

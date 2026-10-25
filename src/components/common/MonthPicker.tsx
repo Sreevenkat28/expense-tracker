@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronLeft,
   ChevronRight,
@@ -33,19 +34,49 @@ export const MonthPicker: React.FC = () => {
 
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Close calendar popover on outside click
+  // The popover is drawn on <body> so the scrollable header strip can never clip it.
+  // Position it under the calendar button, kept fully on screen (also on phones).
+  const updatePopoverPos = () => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 16);
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+    setPopoverPos({ top: rect.bottom + 8, left, width });
+  };
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    updatePopoverPos();
+    window.addEventListener('resize', updatePopoverPos);
+    window.addEventListener('scroll', updatePopoverPos, true);
+    return () => {
+      window.removeEventListener('resize', updatePopoverPos);
+      window.removeEventListener('scroll', updatePopoverPos, true);
+    };
+  }, [isOpen]);
+
+  // Close calendar popover on outside click or Escape
   useEffect(() => {
+    if (!isOpen) return;
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+      const target = event.target as Node;
+      const insideButton = containerRef.current?.contains(target);
+      const insidePopover = popoverRef.current?.contains(target);
+      if (!insideButton && !insidePopover) setIsOpen(false);
     }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsOpen(false);
     }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
     };
   }, [isOpen]);
 
@@ -53,10 +84,10 @@ export const MonthPicker: React.FC = () => {
   const currentYearNum = parseInt(yearStr, 10) || new Date().getFullYear();
   const currentMonthNum = parseInt(monthStr, 10) || new Date().getMonth() + 1;
 
-  // Generate Year options from 2020 to 2030
+  // Year options: 2020 up to five years ahead of today
   const yearOptions = useMemo(() => {
     const list: number[] = [];
-    for (let y = 2020; y <= 2030; y++) {
+    for (let y = 2020; y <= new Date().getFullYear() + 5; y++) {
       list.push(y);
     }
     if (!list.includes(currentYearNum)) {
@@ -191,7 +222,10 @@ export const MonthPicker: React.FC = () => {
         <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
         <button
+          ref={buttonRef}
           onClick={() => setIsOpen(!isOpen)}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             selectedDate
               ? 'bg-emerald-500 text-white shadow-xs'
@@ -216,8 +250,21 @@ export const MonthPicker: React.FC = () => {
       </div>
 
       {/* ── Interactive Calendar Popover Dropdown ───────────────────────── */}
-      {isOpen && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-72 sm:w-80 bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-150">
+      {isOpen && popoverPos && createPortal(
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label="Choose a day"
+          style={{
+            position: 'fixed',
+            top: popoverPos.top,
+            left: popoverPos.left,
+            width: popoverPos.width,
+            maxHeight: `calc(100vh - ${popoverPos.top + 8}px)`,
+            overflowY: 'auto',
+          }}
+          className="z-[100] bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-150"
+        >
           {/* Header Controls inside Calendar */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700 mb-3">
             <div>
@@ -225,7 +272,7 @@ export const MonthPicker: React.FC = () => {
                 {formatMonthName(selectedMonth)}
               </h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Pick any day to filter your transactions
+                Pick a day to open it and record that day's expenses
               </p>
             </div>
             <button
@@ -329,7 +376,8 @@ export const MonthPicker: React.FC = () => {
               Has transactions
             </span>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

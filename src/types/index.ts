@@ -34,7 +34,8 @@ export interface SavingsGoal {
   name: string;
   targetCents: number;
   currentCents: number;
-  currency?: string; // currency targetCents / currentCents are stored in
+  currency?: string; // currency targetCents (and currentCents, unless currentCurrency is set) are stored in
+  currentCurrency?: string; // set when deposits were made in another currency than the target
   targetDate?: string;
   category?: string;
   color?: string;

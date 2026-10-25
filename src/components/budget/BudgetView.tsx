@@ -27,6 +27,8 @@ export const BudgetView: React.FC = () => {
     setCategoryBudget,
     deleteCategoryBudget,
     formatAmount,
+    currencyInfo,
+    convertToDisplay,
   } = useExpense();
   const formatCurrency = formatAmount;
 
@@ -39,7 +41,7 @@ export const BudgetView: React.FC = () => {
 
   // Local state for editing overall monthly budget
   const [budgetInput, setBudgetInput] = useState<string>(() =>
-    (centsToDollars(budgetCents)).toFixed(2)
+    budgetCents > 0 ? (centsToDollars(budgetCents)).toFixed(2) : ''
   );
   const [openingBalanceInput, setOpeningBalanceInput] = useState<string>(() =>
     (centsToDollars(budgetConfig.openingBalanceCents)).toFixed(2)
@@ -51,11 +53,12 @@ export const BudgetView: React.FC = () => {
 
   // Local state for adding/editing a category spending limit
   const [selectedCat, setSelectedCat] = useState<string>(EXPENSE_CATEGORIES[0]);
-  const [catLimitInput, setCatLimitInput] = useState<string>('300');
+  const [catLimitInput, setCatLimitInput] = useState<string>('');
   const [catError, setCatError] = useState<string | null>(null);
 
-  const isExceeded = budgetUsagePercent >= 100;
-  const isNearLimit = budgetUsagePercent >= 80 && !isExceeded;
+  const hasBudget = budgetCents > 0;
+  const isExceeded = hasBudget && budgetUsagePercent >= 100;
+  const isNearLimit = hasBudget && budgetUsagePercent >= 80 && !isExceeded;
 
   const handleSaveBudget = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,10 +100,17 @@ export const BudgetView: React.FC = () => {
     setCatLimitInput('');
   };
 
-  const setPreset = (presetDollars: number) => {
-    setBudgetInput(presetDollars.toFixed(2));
+  const setPreset = (preset: number) => {
+    setBudgetInput(preset.toFixed(2));
     setBudgetError(null);
   };
+
+  // Preset caps are defined in USD, then converted to the selected currency and rounded (e.g. ₹142,500 -> ₹140,000)
+  const presets = [1500, 2500, 3200, 4000, 5000].map((usd) => {
+    const exact = convertToDisplay(usd * 100, 'USD') / 100;
+    const magnitude = Math.pow(10, Math.max(0, Math.floor(Math.log10(exact)) - 1));
+    return Math.round(exact / magnitude) * magnitude;
+  });
 
   const activeCategoryBudgets = budgetConfig.categoryBudgets || {};
 
@@ -126,7 +136,9 @@ export const BudgetView: React.FC = () => {
             <div className="text-3xl font-black text-slate-900 dark:text-white mt-1">
               {budgetUsagePercent.toFixed(1)}%
               <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 ml-2">
-                ({formatCurrency(totalExpensesCents)} of {formatCurrency(budgetCents)})
+                {hasBudget
+                  ? `(${formatCurrency(totalExpensesCents)} of ${formatCurrency(budgetCents)})`
+                  : `(${formatCurrency(totalExpensesCents)} spent, no cap set)`}
               </span>
             </div>
           </div>
@@ -137,10 +149,14 @@ export const BudgetView: React.FC = () => {
                 ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                 : isNearLimit
                 ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                : !hasBudget
+                ? 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                 : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
             }`}
           >
-            {isExceeded ? (
+            {!hasBudget ? (
+              <span>No budget set for {formatMonthName(selectedMonth)}. Set a cap below.</span>
+            ) : isExceeded ? (
               <>
                 <AlertOctagon className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                 <span>Over Budget by {formatCurrency(Math.abs(remainingBudgetCents))}</span>
@@ -174,15 +190,21 @@ export const BudgetView: React.FC = () => {
             />
           </div>
 
-          <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>$0.00</span>
-            <span className="font-semibold text-amber-700 dark:text-amber-400">
-              80% Warning: {formatCurrency(budgetCents * 0.8)}
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              100% Cap: {formatCurrency(budgetCents)}
-            </span>
-          </div>
+          {hasBudget ? (
+            <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span>{formatCurrency(0)}</span>
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                80% Warning: {formatCurrency(budgetCents * 0.8)}
+              </span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                100% Cap: {formatCurrency(budgetCents)}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400 m-0">
+              Enter a monthly spending cap in "Monthly Spending Budget" to track progress here.
+            </p>
+          )}
         </div>
       </div>
 
@@ -221,12 +243,12 @@ export const BudgetView: React.FC = () => {
 
           <div className="w-full sm:w-1/3">
             <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
-              Monthly Limit ($)
+              Monthly Limit ({currencyInfo.symbol})
             </label>
             <input
               type="number"
-              step="10"
-              min="1"
+              step="any"
+              min="0.01"
               placeholder="e.g. 500"
               value={catLimitInput}
               onChange={(e) => setCatLimitInput(e.target.value)}
@@ -330,16 +352,17 @@ export const BudgetView: React.FC = () => {
           <form onSubmit={handleSaveBudget} className="mt-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Overall Spending Cap ($)
+                Overall Spending Cap ({currencyInfo.symbol})
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
-                  $
+                  {currencyInfo.symbol}
                 </div>
                 <input
                   type="number"
-                  step="10"
-                  min="1"
+                  step="any"
+                  min="0.01"
+                  placeholder="e.g. 3000"
                   value={budgetInput}
                   onChange={(e) => setBudgetInput(e.target.value)}
                   className="w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-base font-bold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
@@ -356,14 +379,14 @@ export const BudgetView: React.FC = () => {
                 Quick Presets
               </span>
               <div className="flex flex-wrap gap-2">
-                {[1500, 2500, 3200, 4000, 5000].map((preset) => (
+                {presets.map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => setPreset(preset)}
                     className="px-2.5 py-1 text-xs font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
                   >
-                    ${preset.toLocaleString()}
+                    {currencyInfo.symbol}{preset.toLocaleString()}
                   </button>
                 ))}
               </div>
@@ -401,15 +424,15 @@ export const BudgetView: React.FC = () => {
           <form onSubmit={handleSaveOpening} className="mt-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Starting Bank Balance ($)
+                Starting Bank Balance ({currencyInfo.symbol})
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 font-bold">
-                  $
+                  {currencyInfo.symbol}
                 </div>
                 <input
                   type="number"
-                  step="50"
+                  step="any"
                   value={openingBalanceInput}
                   onChange={(e) => setOpeningBalanceInput(e.target.value)}
                   className="w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-base font-bold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"

@@ -11,7 +11,7 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { resetAllData } = useExpense();
+  const { resetAllData, formatAmount } = useExpense();
 
   if (!isOpen) return null;
 
@@ -55,7 +55,7 @@ export const ResetConfirmationModal: React.FC<ResetConfirmationModalProps> = ({
         <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 flex gap-2.5 items-start">
           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <p className="leading-relaxed m-0">
-            If you made a mistake or want to start fresh, this button resets your ledger back to $0.00.
+            If you made a mistake or want to start fresh, this button resets your ledger back to {formatAmount(0)}.
             All recorded transactions, custom budgets, and savings goals will be cleared.
           </p>
         </div>

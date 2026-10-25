@@ -111,7 +111,8 @@ export const ResetPinForm: React.FC<ResetPinFormProps> = ({ onBack, onDone }) =>
               <Mail className="w-4 h-4" />
             </div>
             <input
-              type="email"
+              type="text"
+              inputMode="email"
               placeholder="name@gmail.com"
               autoComplete="email"
               value={identifier}

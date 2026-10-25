@@ -8,7 +8,7 @@ import {
   BudgetConfig,
   SavingsGoal,
 } from '../types';
-import { formatCurrency, centsToDollars } from '../utils/currency';
+import { formatCurrency, centsToDollars, getCurrencyInfo } from '../utils/currency';
 
 export interface ParsedSmartEntry {
   success: boolean;
@@ -18,7 +18,74 @@ export interface ParsedSmartEntry {
   description: string;
   date: string;
   currencySymbol: string;
+  currency: string; // ISO code the amount is in: detected from the sentence, else the default
+  currencyDetected: boolean; // true when the sentence itself named a currency
   originalText: string;
+}
+
+// ─── Currency & amount detection ───────────────────────────────────────────────
+
+// Longest symbols first so "CA$" is not read as "$"
+const SYMBOL_CODES: Array<[string, string]> = [
+  ['CA$', 'CAD'], ['AU$', 'AUD'], ['US$', 'USD'], ['A$', 'AUD'], ['C$', 'CAD'],
+  ['₹', 'INR'], ['€', 'EUR'], ['£', 'GBP'], ['¥', 'JPY'], ['$', 'USD'],
+];
+
+function markerToCode(marker: string): string | undefined {
+  const m = marker.trim().toLowerCase().replace(/\.$/, '');
+  for (const [symbol, code] of SYMBOL_CODES) if (m === symbol.toLowerCase()) return code;
+  if (m === 'rs' || m === 'inr' || m.startsWith('rupee')) return 'INR';
+  if (m === 'usd' || m.startsWith('dollar') || m === 'bucks') return 'USD';
+  if (m === 'eur' || m.startsWith('euro')) return 'EUR';
+  if (m === 'gbp' || m.startsWith('pound') || m === 'quid') return 'GBP';
+  if (m === 'cad') return 'CAD';
+  if (m === 'aud') return 'AUD';
+  if (m === 'jpy' || m === 'yen') return 'JPY';
+  if (m === 'aed' || m.startsWith('dirham')) return 'AED';
+  return undefined;
+}
+
+// A number: 1,250.50 | 12,50 (decimal comma) | 250 | 45.5
+const NUMBER_TOKEN = /\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?(?!\d)|\d+,\d{1,2}(?!\d)|\d+(?:\.\d{1,2})?/g;
+// Marker right before / after a number. Words must stand alone so "shirts" is never "rs".
+const PREFIX_MARKER = /(?:CA\$|AU\$|US\$|A\$|C\$|[$₹€£¥]|(?:^|[^a-z])(?:rs\.?|inr|usd|eur|gbp|cad|aud|jpy|aed))\s*$/i;
+const SUFFIX_MARKER = /^\s*(?:rs\.?|rupees?|inr|usd|dollars?|bucks|eur|euros?|gbp|pounds?|quid|cad|aud|jpy|yen|aed|dirhams?)(?![a-z])/i;
+
+function tokenToNumber(token: string): number {
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(token)) return parseFloat(token.replace(/,/g, ''));
+  if (/^\d+,\d{1,2}$/.test(token)) return parseFloat(token.replace(',', '.'));
+  return parseFloat(token);
+}
+
+interface AmountMatch {
+  value: number;
+  code?: string;
+  start: number; // span to remove from the description (number plus its currency marker)
+  end: number;
+}
+
+/** Finds the amount in the sentence, preferring a number that has a currency attached. */
+function findAmount(text: string): AmountMatch | null {
+  let first: AmountMatch | null = null;
+  for (const m of text.matchAll(NUMBER_TOKEN)) {
+    const idx = m.index ?? 0;
+    const value = tokenToNumber(m[0]);
+    if (!(value > 0)) continue;
+    const before = text.slice(0, idx);
+    const after = text.slice(idx + m[0].length);
+    const pre = PREFIX_MARKER.exec(before);
+    const suf = pre ? null : SUFFIX_MARKER.exec(after);
+    const marker = pre?.[0] ?? suf?.[0];
+    const found: AmountMatch = {
+      value,
+      code: marker ? markerToCode(marker.replace(/^[^a-z$₹€£¥]/i, '')) : undefined,
+      start: pre ? idx - pre[0].length : idx,
+      end: suf ? idx + m[0].length + suf[0].length : idx + m[0].length,
+    };
+    if (found.code) return found;
+    if (!first) first = found;
+  }
+  return first;
 }
 
 /**
@@ -29,34 +96,16 @@ export interface ParsedSmartEntry {
  * - "Earned $1200 from freelance client"
  * - "Paid $85 for electric bill yesterday"
  */
-export function parseSmartTransaction(input: string, defaultDate: string): ParsedSmartEntry {
+export function parseSmartTransaction(input: string, defaultDate: string, defaultCurrency: string = 'USD'): ParsedSmartEntry {
   const text = input.trim();
   const lower = text.toLowerCase();
 
-  // 1. Detect Currency Symbol
-  let currencySymbol = '$';
-  if (text.includes('₹') || lower.includes('rs') || lower.includes('inr')) {
-    currencySymbol = '₹';
-  } else if (text.includes('€') || lower.includes('eur')) {
-    currencySymbol = '€';
-  } else if (text.includes('£') || lower.includes('gbp')) {
-    currencySymbol = '£';
-  }
-
-  // 2. Extract Amount
-  // Matches patterns like ₹250, $45.50, 250rs, 250.00
-  const amountRegex = /(?:[$₹€£]\s*|rs\.?\s*|inr\s*)?([0-9]+(?:[.,][0-9]{1,2})?)(?:\s*(?:rs|usd|eur|gbp))?/i;
-  const match = text.match(amountRegex);
-
-  let amountCents = 0;
-  let rawAmountStr = '';
-  if (match && match[1]) {
-    rawAmountStr = match[1].replace(',', '.');
-    const num = parseFloat(rawAmountStr);
-    if (!isNaN(num) && num > 0) {
-      amountCents = Math.round(num * 100);
-    }
-  }
+  // 1+2. Amount and its currency (e.g. "₹250", "Rs 1,250", "45 dollars", "$45")
+  const found = findAmount(text);
+  const amountCents = found ? Math.round(found.value * 100) : 0;
+  const currency = found?.code ?? defaultCurrency;
+  const currencyDetected = Boolean(found?.code);
+  const currencySymbol = getCurrencyInfo(currency).symbol;
 
   // 3. Detect Type (Income vs Expense)
   const incomeKeywords = [
@@ -126,11 +175,10 @@ export function parseSmartTransaction(input: string, defaultDate: string): Parse
     }
   }
 
-  // 5. Clean Description
-  let cleanDesc = text
-    .replace(/(?:spent|spend|paid|pay|bought|buy|earned|earn|received|got|deposit)\s+/gi, '')
-    .replace(/[$₹€£]\s*[0-9]+(?:[.,][0-9]{1,2})?/gi, '')
-    .replace(/[0-9]+(?:[.,][0-9]{1,2})?\s*(?:rs|usd|eur|gbp|dollars|cents|rupees)/gi, '')
+  // 5. Clean Description (drop the amount with its currency marker, filler verbs and prepositions)
+  const withoutAmount = found ? `${text.slice(0, found.start)} ${text.slice(found.end)}` : text;
+  let cleanDesc = withoutAmount
+    .replace(/\b(?:spent|spend|paid|pay|bought|buy|earned|earn|received|got|deposit)\b/gi, ' ')
     .replace(/\b(?:on|for|from|to|at|in|yesterday|today)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -152,7 +200,8 @@ export function parseSmartTransaction(input: string, defaultDate: string): Parse
   if (lower.includes('yesterday')) {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    date = d.toISOString().split('T')[0];
+    // Local calendar date (toISOString would use UTC and can land on the wrong day)
+    date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   return {
@@ -163,6 +212,8 @@ export function parseSmartTransaction(input: string, defaultDate: string): Parse
     description: cleanDesc,
     date,
     currencySymbol,
+    currency,
+    currencyDetected,
     originalText: text,
   };
 }

@@ -12,22 +12,31 @@ import {
 import { useExpense, NavigationTab } from '../../context/ExpenseContext';
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, monthSummary, savingsGoals, isAdmin } = useExpense();
+  const { activeTab, setActiveTab, monthSummary, savingsGoals, isAdmin, transactions, activeDay } = useExpense();
+  const dayCount = transactions.filter((t) => t.date === activeDay).length;
 
   const navItems: {
     id: NavigationTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string | number;
+    title?: string;
     badgeColor?: string;
   }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'daily', label: 'Daily Log', icon: CalendarDays },
+    {
+      id: 'daily',
+      label: 'Daily Log',
+      icon: CalendarDays,
+      badge: dayCount > 0 ? dayCount : undefined,
+      title: `${dayCount} entr${dayCount === 1 ? 'y' : 'ies'} on ${activeDay}`,
+    },
     {
       id: 'transactions',
       label: 'Transactions',
       icon: ReceiptText,
       badge: monthSummary.transactionCount > 0 ? monthSummary.transactionCount : undefined,
+      title: `${monthSummary.transactionCount} transaction${monthSummary.transactionCount === 1 ? '' : 's'} in the selected month`,
     },
     {
       id: 'budgets',
@@ -64,6 +73,7 @@ export const Navbar: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
+                title={item.title}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs'

@@ -165,7 +165,7 @@ export const DashboardView: React.FC = () => {
           iconBgColor="bg-rose-50 dark:bg-rose-950/60"
           iconTextColor="text-rose-600 dark:text-rose-400"
           badge={{
-            text: `${monthExpenses.length} transactions`,
+            text: `${monthExpenses.length} expense entr${monthExpenses.length === 1 ? 'y' : 'ies'}`,
             variant: monthExpenses.length > 0 ? 'warning' : 'neutral',
           }}
         />

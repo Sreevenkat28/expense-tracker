@@ -28,6 +28,8 @@ const MainLayout: React.FC = () => {
     setEditingTransaction,
     isAuthenticated,
     currentUser,
+    selectedMonth,
+    currency,
   } = useExpense();
 
   // Show login screen if user has never authenticated and not in guest mode
@@ -53,7 +55,8 @@ const MainLayout: React.FC = () => {
         {(activeTab === 'dashboard' || activeTab === 'home') && <DashboardView />}
         {activeTab === 'daily' && <DailyLogView />}
         {activeTab === 'transactions' && <TransactionsView />}
-        {(activeTab === 'budgets' || activeTab === 'budget') && <BudgetView />}
+        {/* keyed so the amount boxes refresh when the month or currency changes */}
+        {(activeTab === 'budgets' || activeTab === 'budget') && <BudgetView key={`${selectedMonth}-${currency}`} />}
         {activeTab === 'savings' && <SavingsGoalsView />}
         {activeTab === 'insights' && <InsightsView />}
         {activeTab === 'ai' && <AIAssistantView />}

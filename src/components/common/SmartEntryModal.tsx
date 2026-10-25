@@ -19,7 +19,8 @@ import {
   Category,
   TransactionType,
 } from '../../types';
-import { formatCurrency, isValidAmount } from '../../utils/currency';
+import { formatCurrency, isValidAmount, getCurrencyInfo, SUPPORTED_CURRENCIES } from '../../utils/currency';
+import { getTodayDateString } from '../../utils/dates';
 
 interface SmartEntryModalProps {
   isOpen: boolean;
@@ -30,8 +31,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addTransaction, selectedMonth, currencyInfo } = useExpense();
-  const currencySymbol = currencyInfo.symbol;
+  const { addTransaction, selectedMonth, selectedDate, currency, formatAmount, convertToDisplay } = useExpense();
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [parsed, setParsed] = useState<{
@@ -40,7 +40,8 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
     description: string;
     category: Category;
     date: string;
-    currencySymbol: string;
+    currency: string; // currency of the amount: detected from the sentence, editable
+    currencyDetected: boolean;
   } | null>(null);
   const [hasParsed, setHasParsed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -54,11 +55,12 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
       return;
     }
 
-    const defaultDate = new Date().toISOString().substring(0, 10).startsWith(selectedMonth)
-      ? new Date().toISOString().substring(0, 10)
-      : `${selectedMonth}-01`;
+    // The calendar's day wins; otherwise today (local time) if it is in the month shown
+    const today = getTodayDateString();
+    const defaultDate = selectedDate ?? (today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`);
 
-    const res = parseSmartTransaction(inputPrompt, defaultDate);
+    // A currency named in the sentence (₹, Rs, rupees, INR, $ ...) overrides the selected one
+    const res = parseSmartTransaction(inputPrompt, defaultDate, currency);
 
     if (!res.success || res.amountCents <= 0) {
       setErrorMsg('Could not detect an amount. Please specify an amount (e.g. ₹250 or $45).');
@@ -72,7 +74,8 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
       description: res.description,
       category: res.category,
       date: res.date,
-      currencySymbol: res.currencySymbol,
+      currency: res.currency,
+      currencyDetected: res.currencyDetected,
     });
     setHasParsed(true);
   };
@@ -92,6 +95,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
       description: parsed.description || 'Quick Transaction',
       category: parsed.category,
       date: parsed.date,
+      currency: parsed.currency, // saved as typed; shown converted when it differs from the selected currency
     });
 
     // Reset and close
@@ -193,16 +197,28 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
               {/* Amount */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                  Amount ({currencySymbol})
+                  Amount ({getCurrencyInfo(parsed.currency).symbol})
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={parsed.amountStr}
-                  onChange={(e) => setParsed({ ...parsed, amountStr: e.target.value })}
-                  className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
-                />
+                <div className="flex gap-1.5">
+                  <select
+                    value={parsed.currency}
+                    onChange={(e) => setParsed({ ...parsed, currency: e.target.value, currencyDetected: false })}
+                    aria-label="Currency of this amount"
+                    className="px-1.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
+                  >
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={parsed.amountStr}
+                    onChange={(e) => setParsed({ ...parsed, amountStr: e.target.value })}
+                    className="w-full min-w-0 px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
+                  />
+                </div>
               </div>
 
               {/* Description */}
@@ -248,6 +264,23 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
                 />
               </div>
             </div>
+
+            {(() => {
+              const cents = isValidAmount(parsed.amountStr).cents;
+              const differs = parsed.currency !== currency;
+              if (!differs && !parsed.currencyDetected) return null;
+              return (
+                <p className="text-[11px] text-indigo-900 dark:text-indigo-200 bg-indigo-100/70 dark:bg-indigo-950/60 rounded-lg px-2.5 py-1.5 m-0">
+                  {parsed.currencyDetected && <>Currency detected from your sentence: <strong>{parsed.currency}</strong>. </>}
+                  {differs && cents ? (
+                    <>
+                      Saved as <strong>{formatCurrency(cents, false, parsed.currency)}</strong>, shown as about{' '}
+                      <strong>{formatAmount(convertToDisplay(cents, parsed.currency))}</strong> in {currency}.
+                    </>
+                  ) : null}
+                </p>
+              );
+            })()}
 
             <div className="flex justify-end gap-2 pt-2">
               <button

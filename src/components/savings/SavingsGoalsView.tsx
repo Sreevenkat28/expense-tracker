@@ -25,6 +25,7 @@ export const SavingsGoalsView: React.FC = () => {
     deleteSavingsGoal,
     contributeToSavingsGoal,
     formatAmount,
+    currencyInfo,
   } = useExpense();
   const formatCurrency = formatAmount;
 
@@ -82,7 +83,7 @@ export const SavingsGoalsView: React.FC = () => {
 
     const targetVal = isValidAmount(targetAmountStr);
     if (!targetVal.valid || targetVal.cents! <= 0) {
-      setFormError('Please enter a valid target amount greater than $0');
+      setFormError('Please enter a valid target amount greater than zero');
       return;
     }
 
@@ -392,12 +393,12 @@ export const SavingsGoalsView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Target Amount ($)
+                    Target Amount ({currencyInfo.symbol})
                   </label>
                   <input
                     type="number"
-                    step="10"
-                    min="1"
+                    step="any"
+                    min="0.01"
                     placeholder="5000"
                     value={targetAmountStr}
                     onChange={(e) => setTargetAmountStr(e.target.value)}
@@ -407,11 +408,11 @@ export const SavingsGoalsView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                    Already Saved ($)
+                    Already Saved ({currencyInfo.symbol})
                   </label>
                   <input
                     type="number"
-                    step="10"
+                    step="any"
                     min="0"
                     placeholder="0"
                     value={currentAmountStr}
@@ -506,12 +507,12 @@ export const SavingsGoalsView: React.FC = () => {
             <form onSubmit={handleContributeSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Amount ($)
+                  Amount ({currencyInfo.symbol})
                 </label>
                 <input
                   type="number"
-                  step="5"
-                  min="1"
+                  step="any"
+                  min="0.01"
                   placeholder="e.g. 100"
                   value={contributeAmount}
                   onChange={(e) => setContributeAmount(e.target.value)}

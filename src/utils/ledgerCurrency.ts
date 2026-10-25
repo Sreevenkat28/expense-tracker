@@ -46,14 +46,16 @@ export function withoutFieldCurrency(config: BudgetConfig, key: string): BudgetC
   return { ...config, fieldCurrencies };
 }
 
+/** Savings goal re-expressed in `to`. The saved amount can be in a different currency than the target. */
 export function convertGoal(goal: SavingsGoal, to: string, rates: Rates): SavingsGoal {
-  const from = goal.currency ?? to;
-  if (from === to) return { ...goal, currency: to };
+  const targetFrom = goal.currency ?? to;
+  const currentFrom = goal.currentCurrency ?? targetFrom;
   return {
     ...goal,
     currency: to,
-    targetCents: convertCents(goal.targetCents, from, to, rates),
-    currentCents: convertCents(goal.currentCents, from, to, rates),
+    currentCurrency: undefined,
+    targetCents: convertCents(goal.targetCents, targetFrom, to, rates),
+    currentCents: convertCents(goal.currentCents, currentFrom, to, rates),
   };
 }
 

@@ -11,7 +11,7 @@ import {
 import { UserProfile } from '../types/auth';
 import { storageService } from '../services/storage';
 import { authService } from '../services/authService';
-import { getCurrentYearMonth } from '../utils/dates';
+import { getCurrentYearMonth, getDaysInMonth, getTodayDateString } from '../utils/dates';
 import { RateSnapshot, getCachedRates, loadRates, convertCents, describeRate } from '../utils/exchange';
 import {
   convertLedger,
@@ -68,6 +68,7 @@ interface ExpenseContextType {
   selectedMonth: string;
   setSelectedMonth: (month: string) => void;
   selectedDate: string | null;
+  activeDay: string; // the day the Daily Log shows: the picked day, else today (or the 1st of the month shown)
   setSelectedDate: (date: string | null) => void;
   allMonths: string[];
   activeTab: NavigationTab;
@@ -84,6 +85,7 @@ interface ExpenseContextType {
   currencyInfo: CurrencyInfo;
   formatAmount: (cents: number, showSign?: boolean) => string;
   // Exchange rates used when switching currency
+  convertToDisplay: (cents: number, fromCurrency: string) => number; // amount in another currency -> selected currency
   exchangeRateNote: string; // e.g. "1 USD = 95 INR"
   ratesSource: 'live' | 'cached' | 'fallback';
   ratesUpdatedAt: number | null;
@@ -247,6 +249,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Everything the screens see is converted to the selected currency; `data` keeps the originals
   const view = useMemo(() => convertLedger(data, currency, rates), [data, currency, rates]);
+  const convertToDisplay = useCallback(
+    (cents: number, fromCurrency: string) => convertCents(cents, fromCurrency, currency, rates),
+    [currency, rates]
+  );
 
   const currencyInfo = useMemo(() => getCurrencyInfo(currency), [currency]);
 
@@ -255,10 +261,18 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [currency]
   );
 
+  const activeDay = selectedDate ?? (selectedMonth === getCurrentYearMonth() ? getTodayDateString() : `${selectedMonth}-01`);
+
   // ─── Calendar Handlers ───────────────────────────────────────────────────────
   const handleSetSelectedMonth = useCallback((month: string) => {
     setSelectedMonth(month);
-    setSelectedDate((prev) => (prev && prev.startsWith(month) ? prev : null));
+    // In day mode, moving to another month keeps the same day-of-month (e.g. 31st -> 30th)
+    setSelectedDate((prev) => {
+      if (!prev) return null;
+      if (prev.startsWith(month)) return prev;
+      const day = Math.min(Number(prev.slice(8, 10)) || 1, getDaysInMonth(month));
+      return `${month}-${String(day).padStart(2, '0')}`;
+    });
   }, []);
 
   const handleSetSelectedDate = useCallback((date: string | null) => {
@@ -394,9 +408,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const contributeToSavingsGoal = useCallback((id: string, deltaCents: number) => {
     syncStorage(data.transactions, data.budgetConfig, data.savingsGoals.map((g) => {
       if (g.id !== id) return g;
-      // The amount is in the selected currency; add it to the goal in the goal's own currency
-      const delta = convertCents(deltaCents, currency, g.currency ?? currency, rates);
-      return { ...g, currentCents: Math.max(0, g.currentCents + delta) };
+      // Bring what is saved so far into the selected currency (exactly what the card shows), then add the
+      // amount as typed. The target is left alone, so nothing else is re-rounded.
+      const savedNow = convertCents(g.currentCents, g.currentCurrency ?? g.currency ?? currency, currency, rates);
+      return { ...g, currentCents: Math.max(0, savedNow + deltaCents), currentCurrency: currency };
     }));
   }, [data, currency, rates, syncStorage]);
 
@@ -474,6 +489,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     selectedMonth,
     setSelectedMonth: handleSetSelectedMonth,
     selectedDate,
+    activeDay,
     setSelectedDate: handleSetSelectedDate,
     allMonths,
     activeTab,
@@ -487,6 +503,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setCurrency,
     currencyInfo,
     formatAmount,
+    convertToDisplay,
     exchangeRateNote: describeRate('USD', currency, rates),
     ratesSource: rateInfo.source,
     ratesUpdatedAt: rateInfo.updatedAt,

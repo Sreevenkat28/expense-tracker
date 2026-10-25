@@ -9,6 +9,7 @@ import {
   type Transaction,
 } from '../../types';
 import { centsToDollars, isValidAmount } from '../../utils/currency';
+import { getTodayDateString } from '../../utils/dates';
 
 interface TransactionFormModalProps {
   isOpen: boolean;
@@ -21,7 +22,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   onClose,
   transactionToEdit,
 }) => {
-  const { addTransaction, updateTransaction, selectedMonth, currencyInfo } = useExpense();
+  const { addTransaction, updateTransaction, selectedMonth, selectedDate, currencyInfo } = useExpense();
   const currencySymbol = currencyInfo.symbol;
 
   const [type, setType] = useState<TransactionType>('expense');
@@ -39,10 +40,9 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       setCategory(transactionToEdit.category);
       setDate(transactionToEdit.date);
     } else {
-      const todayISO = new Date().toISOString().substring(0, 10);
-      const initialDate = todayISO.startsWith(selectedMonth)
-        ? todayISO
-        : `${selectedMonth}-01`;
+      // The day picked in the calendar wins; otherwise today (local time, not UTC) if it is in the month
+      const todayISO = getTodayDateString();
+      const initialDate = selectedDate ?? (todayISO.startsWith(selectedMonth) ? todayISO : `${selectedMonth}-01`);
 
       setType('expense');
       setAmountStr('');
@@ -51,7 +51,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       setDate(initialDate);
     }
     setErrors({});
-  }, [transactionToEdit, isOpen, selectedMonth]);
+  }, [transactionToEdit, isOpen, selectedMonth, selectedDate]);
 
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);

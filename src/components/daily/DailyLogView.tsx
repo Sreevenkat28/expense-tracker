@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   ChevronLeft,
@@ -44,12 +44,19 @@ export const DailyLogView: React.FC = () => {
     currencyInfo,
     monthSummary,
     setActiveTab,
+    activeDay,
   } = useExpense();
 
   const today = getTodayDateString();
-  // Follows the header calendar; defaults to today
-  const day = selectedDate ?? today;
+  // Follows the header calendar. With no day picked yet: today if the calendar is on this month,
+  // otherwise the 1st of the month shown in the calendar
+  const day = activeDay;
   const goToDay = (iso: string) => setSelectedDate(iso);
+
+  // Make the header calendar show the same day this page is showing
+  useEffect(() => {
+    if (!selectedDate) setSelectedDate(day);
+  }, [selectedDate, day, setSelectedDate]);
 
   // Quick entry form; category and type stay selected between entries for fast logging
   const [type, setType] = useState<TransactionType>('expense');
@@ -203,15 +210,16 @@ export const DailyLogView: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className={card}>
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Spent this day</div>
-          <div className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">{formatAmount(totals.spent)}</div>
+          <div className="text-[clamp(0.85rem,3.8vw,1.5rem)] whitespace-nowrap font-black text-rose-600 dark:text-rose-400 mt-1">{formatAmount(totals.spent)}</div>
         </div>
         <div className={card}>
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Earned this day</div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatAmount(totals.earned)}</div>
+          <div className="text-[clamp(0.85rem,3.8vw,1.5rem)] whitespace-nowrap font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatAmount(totals.earned)}</div>
         </div>
         <div className={card}>
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Entries</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Entries this day</div>
           <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{dayTransactions.length}</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">{monthSummary.transactionCount} in the month</div>
         </div>
         <div className={card}>
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
@@ -221,7 +229,7 @@ export const DailyLogView: React.FC = () => {
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">Set a monthly budget in Budgets to see a daily limit</div>
           ) : (
             <>
-              <div className={`text-2xl font-black mt-1 ${overAllowance ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+              <div className={`text-[clamp(0.85rem,3.8vw,1.5rem)] whitespace-nowrap font-black mt-1 ${overAllowance ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
                 {formatAmount(dailyAllowance)}
               </div>
               <div className={`text-[11px] font-semibold ${overAllowance ? 'text-rose-600' : 'text-emerald-600'}`}>
