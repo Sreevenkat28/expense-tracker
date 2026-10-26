@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Wand2,
   X,
@@ -32,7 +32,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addTransaction, selectedMonth, selectedDate, currency, formatAmount, convertToDisplay } = useExpense();
+  const { addTransaction, selectedMonth, selectedDate, currency, formatAmount, convertToDisplay, smartEntryText, setSmartEntryText } = useExpense();
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [parsed, setParsed] = useState<{
@@ -48,11 +48,9 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   useEscapeKey(isOpen, onClose);
 
-  if (!isOpen) return null;
-
-  const handleParse = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputPrompt.trim()) {
+  // Works out the amount, currency, category and date from a sentence and fills the review card
+  const parseText = (text: string) => {
+    if (!text.trim()) {
       setErrorMsg('Please enter a sentence describing your transaction.');
       return;
     }
@@ -62,7 +60,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
     const defaultDate = selectedDate ?? (today.startsWith(selectedMonth) ? today : `${selectedMonth}-01`);
 
     // A currency named in the sentence (₹, Rs, rupees, INR, $ ...) overrides the selected one
-    const res = parseSmartTransaction(inputPrompt, defaultDate, currency);
+    const res = parseSmartTransaction(text, defaultDate, currency);
 
     if (!res.success || res.amountCents <= 0) {
       setErrorMsg('Could not detect an amount. Please specify an amount (e.g. ₹250 or $45).');
@@ -80,6 +78,23 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
       currencyDetected: res.currencyDetected,
     });
     setHasParsed(true);
+  };
+
+  // The assistant can hand over a sentence ("I spent 250 on lunch"): fill it in and parse it right away
+  useEffect(() => {
+    if (isOpen && smartEntryText) {
+      setInputPrompt(smartEntryText);
+      parseText(smartEntryText);
+      setSmartEntryText('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, smartEntryText]);
+
+  if (!isOpen) return null;
+
+  const handleParse = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    parseText(inputPrompt);
   };
 
   const handleConfirmAdd = () => {

@@ -12,7 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { answerQuestionDetailed, AssistantContext } from '../../services/assistant';
+import { answerQuestionDetailed, AssistantContext, AssistantAction } from '../../services/assistant';
 import { askAI, buildSummary } from '../../services/aiChat';
 
 interface ChatMessage {
@@ -21,6 +21,9 @@ interface ChatMessage {
   text: string;
   timestamp: string;
 }
+
+// The conversation survives switching pages (the assistant can open pages for you), but not a different account
+let savedChat: { owner: string; messages: ChatMessage[] } | null = null;
 
 /** Shows **bold** and *italic* from the assistant's answers as real formatting instead of raw asterisks. */
 const RichText: React.FC<{ text: string }> = ({ text }) => (
@@ -42,18 +45,39 @@ export const AIAssistantView: React.FC = () => {
     budgetConfig,
     savingsGoals,
     setIsSmartEntryOpen,
+    setSmartEntryText,
+    setIsQuickAddOpen,
+    setActiveTab,
+    setCurrency,
+    setDark,
+    convertAmount,
+    exchangeRateNote,
+    currentUser,
     currency,
   } = useExpense();
+  const owner = currentUser?.id ?? 'guest';
 
   const [questionInput, setQuestionInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: `Hi! I'm your AI Financial Assistant. 👋\n\nYou can chat with me normally, or ask about your money, for example *"How much did I spend on food last month?"* or *"Can I afford 5000 this month?"*. I'm looking at **${selectedMonth}** unless you name another time (today, this week, last month, a month name).`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    savedChat && savedChat.owner === owner
+      ? savedChat.messages
+      : [
+          {
+            id: 'welcome',
+            sender: 'assistant',
+            text: `Hi! I'm your AI Financial Assistant. 👋\n\nI can answer questions about your money, your account and quick maths, and I can do things for you like adding an expense, opening a page, switching currency or turning on dark mode. For example: *"How much did I spend last month?"*, *"What's my name?"*, *"What's 15% of 2000?"* or *"I spent 250 on lunch"*.\n\nI can only help with things related to this app. I'm looking at **${selectedMonth}** unless you name another time.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]
+  );
+  // Always save the chat the moment it changes: the assistant may open another page right after replying
+  const messagesRef = useRef(messages);
+  const setChat = (next: ChatMessage[]) => {
+    messagesRef.current = next;
+    savedChat = { owner, messages: next };
+    setMessages(next);
+  };
+  const pushMessage = (msg: ChatMessage) => setChat([...messagesRef.current, msg]);
 
   const [thinking, setThinking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -68,41 +92,61 @@ export const AIAssistantView: React.FC = () => {
     const text = query.trim();
     if (!text || thinking) return;
 
-    setMessages((prev) => [...prev, { id: `msg-${Date.now()}-user`, sender: 'user', text, timestamp: stamp() }]);
+    pushMessage({ id: `msg-${Date.now()}-user`, sender: 'user', text, timestamp: stamp() });
     setQuestionInput('');
     setThinking(true);
 
-    // 1) The app works out the exact numbers itself, so nothing can be made up
+    // 1) The app works out the answer itself (profile, maths, actions, exact money figures), so nothing is made up
     const ctx: AssistantContext = {
-      previousQuestion: [...messages].reverse().find((m) => m.sender === 'user')?.text,
+      previousQuestion: [...messagesRef.current].reverse().find((m) => m.sender === 'user')?.text,
       monthSummary,
       categorySpendings,
       transactions,
       selectedMonth,
       budgetConfig,
       savingsGoals,
+      currency,
+      exchangeRateNote,
+      convertCurrency: convertAmount,
+      profile: currentUser
+        ? { name: currentUser.name, username: currentUser.username, email: currentUser.email, role: currentUser.role, createdAt: currentUser.createdAt, lastLoginAt: currentUser.lastLoginAt, currency: currentUser.currency, isGuest: false }
+        : { name: 'Guest', username: '', isGuest: true },
     };
     const local = answerQuestionDetailed(text, ctx);
 
-    // 2) A real AI (if it has been set up) turns that into a natural reply; otherwise use the built-in one
-    const history = messages.map((m) => ({ role: m.sender, text: m.text })).slice(-8);
-    const ai = await askAI({
-      question: text,
-      history,
-      facts: local.understood && !local.smallTalk ? local.text : undefined,
-      summary: buildSummary(ctx, currency),
-    });
-
+    // 2) A real AI (if it has been set up) makes chit-chat and money answers sound natural.
+    //    Profile, maths, app help and out-of-scope replies stay local, so personal details never leave the app.
     let reply = local.text;
-    if (ai.ok) reply = ai.text;
-    else if (ai.reason === 'limit' && ai.message) reply = `${ai.message}\n\n${local.text}`;
+    if (local.kind === 'chat' || local.kind === 'data' || local.kind === 'unclear') {
+      const history = messagesRef.current.map((m) => ({ role: m.sender, text: m.text })).slice(-8);
+      const ai = await askAI({
+        question: text,
+        history,
+        facts: local.kind === 'data' ? local.text : undefined,
+        summary: buildSummary(ctx, currency),
+      });
+      if (ai.ok) reply = ai.text;
+      else if (ai.reason === 'limit' && ai.message) reply = `${ai.message}\n\n${local.text}`;
+    }
 
-    setMessages((prev) => [...prev, { id: `msg-${Date.now()}-ai`, sender: 'assistant', text: reply, timestamp: stamp() }]);
+    pushMessage({ id: `msg-${Date.now()}-ai`, sender: 'assistant', text: reply, timestamp: stamp() });
     setThinking(false);
+    if (local.action) runAction(local.action);
+  };
+
+  // The few safe things the assistant can do for you (it never deletes, resets or signs out)
+  const runAction = (action: AssistantAction) => {
+    if (action.type === 'navigate') setActiveTab(action.tab);
+    else if (action.type === 'open-add') setIsQuickAddOpen(true);
+    else if (action.type === 'smart-entry') {
+      setSmartEntryText(action.text);
+      setIsSmartEntryOpen(true);
+    } else if (action.type === 'set-currency') setCurrency(action.code);
+    else if (action.type === 'dark-mode') setDark(action.value === 'toggle' ? (d) => !d : action.value);
   };
 
   const handleClearChat = () => {
-    setMessages([
+    setChat([
       {
         id: 'reset',
         sender: 'assistant',
@@ -113,14 +157,14 @@ export const AIAssistantView: React.FC = () => {
   };
 
   const quickPrompts = [
+    'What is my name?',
     'How much did I spend this month?',
-    'How much did I spend today?',
-    'What is my highest expense?',
+    'What is 15% of 2000?',
     'Did I spend more than last month?',
     'Am I within my budget?',
-    'How much did I spend on food?',
-    'Where did most of my money go?',
-    'How are my savings goals doing?',
+    'Add an expense',
+    'Turn on dark mode',
+    'How do I export my data?',
   ];
 
   return (
@@ -133,11 +177,11 @@ export const AIAssistantView: React.FC = () => {
               AI Financial Assistant
             </h2>
             <span className="text-[10px] font-semibold tracking-wider uppercase bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full">
-              Grounded
+              In-app only
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Ask questions about your finances, analyze spending habits, and smart-record transactions
+            Ask about your finances or account, do quick calculations, or tell me what to do in the app
           </p>
         </div>
 
@@ -163,7 +207,7 @@ export const AIAssistantView: React.FC = () => {
       <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-900/40 rounded-2xl flex items-start gap-3">
         <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
         <div className="text-xs text-indigo-950 dark:text-indigo-200 leading-relaxed">
-          <span className="font-bold">Strict Mathematical Integrity:</span> All answers are calculated directly from your recorded transactions for <strong>{selectedMonth}</strong>. As required by financial rules, the assistant never fabricates totals or guesses numbers.
+          <span className="font-bold">Your in-app assistant:</span> it answers about your money (<strong>{selectedMonth}</strong> unless you name another time), your account and quick maths, and can open pages or add expenses for you. Money figures are always calculated from your recorded transactions, never guessed. It only helps with things inside this app.
         </div>
       </div>
 
@@ -248,7 +292,7 @@ export const AIAssistantView: React.FC = () => {
           >
             <input
               type="text"
-              placeholder="Say hi or ask about your spending, income, budget or savings..."
+              placeholder="Ask about your money or account, do a quick calculation, or tell me what to do..."
               disabled={thinking}
               value={questionInput}
               onChange={(e) => setQuestionInput(e.target.value)}

@@ -17,20 +17,13 @@ import {
   INCOME_CATEGORIES,
 } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { CATEGORY_WORDS, type AssistantContext } from './assistantShared';
+import { solveMath } from './calculator';
+import { matchProfile, matchAppRequest, isOffTopic, looksAppRelated, OUT_OF_SCOPE_TEXT, type AssistantAction } from './appKnowledge';
+export type { AssistantAction } from './appKnowledge';
+export type { AssistantContext } from './assistantShared';
 import { formatMonthName, formatDate, getPreviousMonth, getDaysInMonth, getTodayDateString } from '../utils/dates';
 
-export interface AssistantContext {
-  monthSummary: MonthSummary;
-  categorySpendings: CategorySpending[];
-  transactions: Transaction[];
-  selectedMonth: string;
-  budgetConfig: BudgetConfig;
-  savingsGoals: SavingsGoal[];
-  /** The question asked just before this one, so "and last month?" can be answered. */
-  previousQuestion?: string;
-  /** Today's date (YYYY-MM-DD); only set in tests. */
-  today?: string;
-}
 
 type Intent =
   | 'help' | 'thanks' | 'afford' | 'goals' | 'compare' | 'biggest' | 'top-categories' | 'count'
@@ -73,19 +66,6 @@ const monthPeriod = (ym: string): Period => ({ start: `${ym}-01`, end: `${ym}-${
 
 // ─── What the user is talking about ──────────────────────────────────────────
 
-const CATEGORY_WORDS: Array<[RegExp, Category]> = [
-  [/\b(food|foods|grocer\w*|lunch|dinner|breakfast|meals?|restaurants?|cafe|coffee|snacks?|pizza|burger|supermarket|eating|eat)\b/, 'Food and groceries'],
-  [/\b(transport\w*|uber|ola|taxi|cab|fuel|petrol|gas|bus|metro|train|flights?|toll|parking|commut\w*|travel\w*)\b/, 'Transportation'],
-  [/\b(shopping|amazon|clothes|clothing|shoes|mall|gadgets?|electronics)\b/, 'Shopping'],
-  [/\b(entertainment|movies?|cinema|games?|gaming|concerts?|outings?)\b/, 'Entertainment'],
-  [/\b(bills?|rent|subscriptions?|wifi|internet|netflix|spotify|electric\w*|water|phone|utilit\w*|insurance)\b/, 'Bills and subscriptions'],
-  [/\b(education|courses?|udemy|books?|tuition|school|classes|class|fees)\b/, 'Education'],
-  [/\b(salary|paycheck|wages?)\b/, 'Salary'],
-  [/\b(freelanc\w*|gigs?|clients?)\b/, 'Freelance'],
-  [/\b(invest\w*|dividends?|stocks?)\b/, 'Investments'],
-  [/\b(refunds?|cashback|reimburse\w*)\b/, 'Refunds'],
-  [/\b(gifts?|bonus)\b/, 'Gifts & Other'],
-];
 
 /** "Food and groceries" -> "Food and Groceries" (how categories are written in answers). */
 const catLabel = (c: string) => c.split(' ').map((w) => (w === 'and' ? 'and' : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
@@ -145,7 +125,7 @@ function parseQuery(question: string, ctx: AssistantContext, today: string): Par
     [/\bhow many\b|\bnumber of\b|\bcount\b/, 'count'],
     [/\baverage\b|\bavg\b|\bper day\b|\bdaily (spend|spending|expense|average)\b|\bon average\b/, 'average'],
     [/\b(budget|within (my )?limit|over (my )?limit|remaining|how much (can|could) i (still )?(spend|use)|money left|left (to spend|for))\b|\bhow much (is |do i have )?left\b/, 'budget'],
-    [/\b(list|show me|show my|recent|latest|history|last \d+ (transactions|expenses|entries)|what (were|are) my (transactions|expenses))\b/, 'list'],
+    [/\b(list|show me|show my|recent|latest|history|last \d+ (transactions|expenses|entries)|what (were|are) my (transactions|expenses))\b|\b(see|view|check|display)\b.*\btransactions?\b/, 'list'],
     [/\b(summary|summarize|summarise|overview|report|status|income vs expense|income and expense)\b/, 'summary'],
     [/\b(net|balance|saved|surplus|deficit|profit|cash ?flow|left over|savings rate)\b|\bhow much (did|have) i save\b/, 'net'],
     [/\b(how much|total|spend|spent|spending|expenses?|costs?|paid|pay|earn|earned|earning|income|made|make|received|salary|revenue)\b/, 'sum'],
@@ -244,7 +224,7 @@ const pickBy = (seed: string, options: string[]) => {
 };
 
 const HELP_TEXT = (examples: string[]) =>
-  `I can answer questions about your spending, income, budget, savings goals and trends, using your real transactions. Try asking:\n\n${examples.map((e) => `• *"${e}"*`).join('\n')}\n\nYou can add a time like *today*, *yesterday*, *this week*, *last month* or a month name, and name a category or item (food, rent, coffee...).`;
+  `I can help with anything inside this app:\n\n• **Your money:** spending, income, budget, savings goals and trends, from your real transactions\n• **Your account:** *"What's my name?"*, *"Am I an admin?"*\n• **Quick maths:** *"What's 15% of 2000?"*, *"Split 1200 between 4"*\n• **Doing things:** *"Add an expense"*, *"Open my budgets"*, *"Switch to rupees"*, *"Turn on dark mode"*\n• **How-to help:** exporting, importing, resetting your PIN and more\n\nTry asking:\n\n${examples.map((e) => `• *"${e}"*`).join('\n')}\n\nI can only help with things related to this app.`;
 
 /** A natural reply to greetings and chit-chat, or null when the message is about the user's money. */
 export function smallTalk(question: string, today: string): string | null {
@@ -286,19 +266,9 @@ export function smallTalk(question: string, today: string): string | null {
 
 // ─── Answers ─────────────────────────────────────────────────────────────────
 
-export function answerQuestion(question: string, ctx: AssistantContext): string {
+/** Answers questions about the user's own transactions, budget and goals. */
+function answerFromData(question: string, ctx: AssistantContext): string {
   const today = ctx.today ?? getTodayDateString();
-  const talk = smallTalk(question, today);
-  if (talk) return talk;
-
-  // "Hi, how much did I spend on food?": answer the question and say hi first
-  const opener = question.match(/^\s*(hi+|hello+|hey+|hiya|good (?:morning|afternoon|evening))[\s,!.:-]+(?=\S)/i);
-  if (opener) {
-    const rest = question.slice(opener[0].length);
-    const answer = answerQuestion(rest, ctx);
-    return `${opener[1].replace(/^./, (c) => c.toUpperCase())}! ${answer}`;
-  }
-
   let parsed = parseQuery(question, ctx, today);
 
   // Follow-ups such as "and last month?" or "what about food?" reuse the earlier question's meaning
@@ -372,7 +342,15 @@ export function answerQuestion(question: string, ctx: AssistantContext): string 
       let budgetNote = '';
       if (type === 'expense' && !what && isSelectedMonth && ctx.monthSummary.budgetCents > 0)
         budgetNote = ` That's **${ctx.monthSummary.budgetUsagePercent.toFixed(1)}%** of your ${money(ctx.monthSummary.budgetCents)} budget.`;
-      return `You ${verb} **${money(s.total)}**${what ? ` on ${what}` : ''} ${when(period)}, across ${plural(s.txs.length, noun)}.${share}${budgetNote}${trendNote(ctx, parsed, period, s.total)}`;
+      // For a plain "my expenses", also point out where most of it went
+      let topNote = '';
+      if (!what && type === 'expense' && s.txs.length > 1) {
+        const byCat = new Map<string, number>();
+        s.txs.forEach((t) => byCat.set(t.category, (byCat.get(t.category) ?? 0) + t.amountCents));
+        const top = [...byCat.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (top && byCat.size > 1) topNote = ` Most of it went to **${catLabel(top[0])}** (**${money(top[1])}**).`;
+      }
+      return `You ${verb} **${money(s.total)}**${what ? ` on ${what}` : ''} ${when(period)}, across ${plural(s.txs.length, noun)}.${topNote}${share}${budgetNote}${trendNote(ctx, parsed, period, s.total)}`;
     }
 
     case 'biggest': {
@@ -550,17 +528,73 @@ export function answerQuestion(question: string, ctx: AssistantContext): string 
 
 const UNSURE = /not sure what you'd like to know|couldn't find anything matching/;
 
+export type AnswerKind = 'chat' | 'identity' | 'profile' | 'math' | 'app' | 'data' | 'unclear' | 'out-of-scope';
+
 export interface DetailedAnswer {
   text: string;
   /** false when the built-in engine could not work out what was asked */
   understood: boolean;
   /** true for greetings and chit-chat */
   smallTalk: boolean;
+  /** which part of the assistant produced the answer */
+  kind: AnswerKind;
+  /** something the app should do for the user (open a page, switch currency...) */
+  action?: AssistantAction;
 }
 
+const WANTS = /^\s*(i want|i need|i would like|i'd like|i wanna|give me|get me|can i have|could i have|bring me|buy me|order me|i demand)\b/i;
+const WANTS_TO_KNOW = /\b(to (know|see|check|find|view|understand|learn|look)|know (about|how|what)|see (my|the|how|what))\b/i;
+const FOLLOW_UP_HINT = /^\s*(and|what about|how about|also|same for|then)\b|\b(today|yesterday|this (week|month|year)|last (week|month|year)|previous month|january|february|march|april|june|july|august|september|october|november|december)\b/i;
+
+const done = (text: string, kind: AnswerKind, extra: Partial<DetailedAnswer> = {}): DetailedAnswer => ({
+  text, kind, understood: kind !== 'unclear' && kind !== 'out-of-scope', smallTalk: kind === 'chat', ...extra,
+});
+
+/** Works out what the message is about and answers it, or politely declines when it is not about this app. */
 export function answerQuestionDetailed(question: string, ctx: AssistantContext): DetailedAnswer {
   const today = ctx.today ?? getTodayDateString();
-  const text = answerQuestion(question, ctx);
-  const talk = smallTalk(question, today) !== null;
-  return { text, smallTalk: talk, understood: talk || !UNSURE.test(text) };
+
+  // Greetings, name, thanks, jokes...
+  const talk = smallTalk(question, today);
+  if (talk) {
+    // Who/what the assistant is stays a fixed, local answer so it can never say anything else
+    const t = question.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const identity = /\b(your name|who are you|who r u|what are you|what should i call you|what can i call you|introduce yourself|about yourself|who (made|created|built|developed|programmed|designed) you|your (creator|developer|maker))\b|^(are you|r u|are u) (a |an )?(real |human|person|robot|bot|ai|chatgpt|claude|gemini|gpt|alive|smart)/.test(t);
+    return done(talk, identity ? 'identity' : 'chat');
+  }
+
+  // "Hi, how much did I spend on food?": say hi, then answer the real question
+  const opener = question.match(/^\s*(hi+|hello+|hey+|hiya|good (?:morning|afternoon|evening))[\s,!.:-]+(?=\S)/i);
+  if (opener) {
+    const inner = answerQuestionDetailed(question.slice(opener[0].length), ctx);
+    return { ...inner, text: `${opener[1].replace(/^./, (c) => c.toUpperCase())}! ${inner.text}` };
+  }
+
+  // Questions about the user ("what's my name?") and quick maths
+  const profile = matchProfile(question, ctx);
+  if (profile) return done(profile, 'profile');
+  const math = solveMath(question);
+  if (math) return done(math.text, 'math');
+
+  // Clearly not about this app
+  if (isOffTopic(question)) return done(OUT_OF_SCOPE_TEXT, 'out-of-scope');
+
+  // Doing or explaining something in the app
+  const app = matchAppRequest(question, ctx, today);
+  if (app) return done(app.text, 'app', { action: app.action });
+
+  // "I want a pizza" / "get me a ticket": requests the app cannot fulfil
+  if (WANTS.test(question) && !WANTS_TO_KNOW.test(question)) return done(OUT_OF_SCOPE_TEXT, 'out-of-scope');
+
+  // Money questions, as long as the message is plausibly about the app
+  const shortFollowUp = Boolean(ctx.previousQuestion) && question.trim().split(/\s+/).length <= 6 && FOLLOW_UP_HINT.test(question);
+  const mentionsCategory = CATEGORY_WORDS.some(([re]) => re.test(question.toLowerCase()));
+  if (!looksAppRelated(question, ctx) && !(shortFollowUp && (mentionsCategory || FOLLOW_UP_HINT.test(question)))) return done(OUT_OF_SCOPE_TEXT, 'out-of-scope');
+
+  const text = answerFromData(question, ctx);
+  return done(text, UNSURE.test(text) ? 'unclear' : 'data');
+}
+
+export function answerQuestion(question: string, ctx: AssistantContext): string {
+  return answerQuestionDetailed(question, ctx).text;
 }

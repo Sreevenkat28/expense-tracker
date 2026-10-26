@@ -110,7 +110,7 @@ describe('The assistant answers the question that was asked', () => {
     expect(ask('what about transport?', { previousQuestion: 'How much did I spend this month?' })).toContain('**$30.00** on **Transportation**');
     // gibberish after a real question must not inherit its meaning
     const g = ask('blah blah purple', { previousQuestion: 'How many transactions do I have?' });
-    expect(g).toMatch(/not sure what you'd like to know|couldn't find anything matching/);
+    expect(g).toContain('Sorry, I can only help with things related to this app');
     expect(g).not.toMatch(/\d+ transactions/);
   });
 
@@ -141,7 +141,7 @@ describe('The assistant answers the question that was asked', () => {
   it('is friendly to greetings and never dumps your numbers when it is unsure', () => {
     expect(ask('hi')).toMatch(/AI Financial Assistant.*What would you like to know/);
     const unsure = ask('purple monkey dishwasher');
-    expect(unsure).toMatch(/couldn't find anything matching|not sure what you'd like to know/);
+    expect(unsure).toContain('Sorry, I can only help with things related to this app');
     expect(unsure).not.toMatch(/\$\d/); // no financial numbers listed
     expect(ask('how much did I spend on helicopters')).toContain("couldn't find anything matching");
   });

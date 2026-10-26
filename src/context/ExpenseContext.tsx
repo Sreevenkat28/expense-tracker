@@ -86,6 +86,7 @@ interface ExpenseContextType {
   formatAmount: (cents: number, showSign?: boolean) => string;
   // Exchange rates used when switching currency
   convertToDisplay: (cents: number, fromCurrency: string) => number; // amount in another currency -> selected currency
+  convertAmount: (amount: number, from: string, to: string) => number; // whole units, at the app's current rates
   exchangeRateNote: string; // e.g. "1 USD = 95 INR"
   ratesSource: 'live' | 'cached' | 'fallback';
   ratesUpdatedAt: number | null;
@@ -124,6 +125,9 @@ interface ExpenseContextType {
   setIsQuickAddOpen: (open: boolean) => void;
   isSmartEntryOpen: boolean;
   setIsSmartEntryOpen: (open: boolean) => void;
+  /** Text to pre-fill (and parse) the next time Smart Entry opens; cleared once used */
+  smartEntryText: string;
+  setSmartEntryText: (text: string) => void;
   isResetModalOpen: boolean;
   setIsResetModalOpen: (open: boolean) => void;
   editingTransaction: Transaction | null;
@@ -211,6 +215,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activeTab, setActiveTabRaw] = useState<NavigationTab>('dashboard');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSmartEntryOpen, setIsSmartEntryOpen] = useState(false);
+  const [smartEntryText, setSmartEntryText] = useState('');
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
@@ -249,6 +254,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Everything the screens see is converted to the selected currency; `data` keeps the originals
   const view = useMemo(() => convertLedger(data, currency, rates), [data, currency, rates]);
+  const convertAmount = useCallback(
+    (amount: number, from: string, to: string) => convertCents(Math.round(amount * 100), from, to, rates) / 100,
+    [rates]
+  );
   const convertToDisplay = useCallback(
     (cents: number, fromCurrency: string) => convertCents(cents, fromCurrency, currency, rates),
     [currency, rates]
@@ -530,6 +539,9 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsQuickAddOpen,
     isSmartEntryOpen,
     setIsSmartEntryOpen,
+    smartEntryText,
+    setSmartEntryText,
+    convertAmount,
     isResetModalOpen,
     setIsResetModalOpen,
     editingTransaction,

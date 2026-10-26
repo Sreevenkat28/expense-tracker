@@ -74,6 +74,7 @@ describe('Google script: AI chat action', () => {
     expect(call.headers['x-goog-api-key']).toBe('SECRET-KEY-123');
     expect(JSON.stringify(r)).not.toContain('SECRET-KEY-123');
     expect(call.payload.systemInstruction.parts[0].text).toMatch(/AI Financial Assistant.*You spent \*\*\$12\.00\*\*/s);
+    expect(call.payload.systemInstruction.parts[0].text).toContain('Sorry, I can only help with things related to this app');
     // history starts with a user turn and alternates; the new question is last
     const roles = call.payload.contents.map((c: any) => c.role);
     expect(roles).toEqual(['user', 'model', 'user']);
