@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Sparkles,
@@ -12,7 +12,8 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
-import { answerSpendingQuestion } from '../../services/aiService';
+import { answerQuestionDetailed, AssistantContext } from '../../services/assistant';
+import { askAI, buildSummary } from '../../services/aiChat';
 
 interface ChatMessage {
   id: string;
@@ -41,6 +42,7 @@ export const AIAssistantView: React.FC = () => {
     budgetConfig,
     savingsGoals,
     setIsSmartEntryOpen,
+    currency,
   } = useExpense();
 
   const [questionInput, setQuestionInput] = useState('');
@@ -48,42 +50,55 @@ export const AIAssistantView: React.FC = () => {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Hello! I am your AI Financial Assistant.\n\nAsk me a question and I'll answer it from your real transactions, for example *"How much did I spend on food last month?"* or *"Can I afford 5000 this month?"*. I'm looking at **${selectedMonth}** unless you name another time (today, this week, last month, a month name).`,
+      text: `Hi! I'm your AI Financial Assistant. 👋\n\nYou can chat with me normally, or ask about your money, for example *"How much did I spend on food last month?"* or *"Can I afford 5000 this month?"*. I'm looking at **${selectedMonth}** unless you name another time (today, this week, last month, a month name).`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
-  const handleAsk = (query: string) => {
-    if (!query.trim()) return;
+  const [thinking, setThinking] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+  // Keep the newest message in view
+  useEffect(() => {
+    endRef.current?.scrollIntoView?.({ block: 'end' });
+  }, [messages, thinking]);
 
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}-user`,
-      sender: 'user',
-      text: query.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+  const stamp = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Calculate exact mathematical answer (the last question lets "and last month?" make sense)
-    const lastUserQuestion = [...messages].reverse().find((m) => m.sender === 'user')?.text;
-    const answer = answerSpendingQuestion(query, {
-      previousQuestion: lastUserQuestion,
+  const handleAsk = async (query: string) => {
+    const text = query.trim();
+    if (!text || thinking) return;
+
+    setMessages((prev) => [...prev, { id: `msg-${Date.now()}-user`, sender: 'user', text, timestamp: stamp() }]);
+    setQuestionInput('');
+    setThinking(true);
+
+    // 1) The app works out the exact numbers itself, so nothing can be made up
+    const ctx: AssistantContext = {
+      previousQuestion: [...messages].reverse().find((m) => m.sender === 'user')?.text,
       monthSummary,
       categorySpendings,
       transactions,
       selectedMonth,
       budgetConfig,
       savingsGoals,
+    };
+    const local = answerQuestionDetailed(text, ctx);
+
+    // 2) A real AI (if it has been set up) turns that into a natural reply; otherwise use the built-in one
+    const history = messages.map((m) => ({ role: m.sender, text: m.text })).slice(-8);
+    const ai = await askAI({
+      question: text,
+      history,
+      facts: local.understood && !local.smallTalk ? local.text : undefined,
+      summary: buildSummary(ctx, currency),
     });
 
-    const assistantMsg: ChatMessage = {
-      id: `msg-${Date.now()}-ai`,
-      sender: 'assistant',
-      text: answer,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+    let reply = local.text;
+    if (ai.ok) reply = ai.text;
+    else if (ai.reason === 'limit' && ai.message) reply = `${ai.message}\n\n${local.text}`;
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setQuestionInput('');
+    setMessages((prev) => [...prev, { id: `msg-${Date.now()}-ai`, sender: 'assistant', text: reply, timestamp: stamp() }]);
+    setThinking(false);
   };
 
   const handleClearChat = () => {
@@ -188,6 +203,20 @@ export const AIAssistantView: React.FC = () => {
               </div>
             );
           })}
+          {thinking && (
+            <div className="flex gap-3 justify-start" aria-live="polite">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div className="rounded-2xl rounded-tl-none px-4 py-3 text-xs sm:text-sm bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-300 border border-slate-200/60 dark:border-slate-600/60 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
+                <span className="ml-1">Thinking…</span>
+              </div>
+            </div>
+          )}
+          <div ref={endRef} />
         </div>
 
         {/* Quick Suggestion Chips */}
@@ -199,6 +228,7 @@ export const AIAssistantView: React.FC = () => {
             <button
               key={prompt}
               type="button"
+              disabled={thinking}
               onClick={() => handleAsk(prompt)}
               className="text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 px-3 py-1 rounded-xl transition-all whitespace-nowrap cursor-pointer shadow-2xs"
             >
@@ -218,20 +248,24 @@ export const AIAssistantView: React.FC = () => {
           >
             <input
               type="text"
-              placeholder="Ask a question about your spending, income, or budget..."
+              placeholder="Say hi or ask about your spending, income, budget or savings..."
+              disabled={thinking}
               value={questionInput}
               onChange={(e) => setQuestionInput(e.target.value)}
               className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             />
             <button
               type="submit"
-              disabled={!questionInput.trim()}
+              disabled={!questionInput.trim() || thinking}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Ask</span>
             </button>
           </form>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 mb-0 px-1">
+            Your totals are calculated here on your device. When smart AI replies are switched on, your question and a short summary of your totals (never your individual transactions) are sent to the AI service to write the reply.
+          </p>
         </div>
       </div>
     </div>

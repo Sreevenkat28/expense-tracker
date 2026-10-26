@@ -114,8 +114,32 @@ describe('The assistant answers the question that was asked', () => {
     expect(g).not.toMatch(/\d+ transactions/);
   });
 
+  it('chats like a person: greeting, name, thanks, goodbye, jokes, date', () => {
+    expect(ask('Hi')).toMatch(/^(Hi there|Hello|Hey)! 👋 I'm your AI Financial Assistant/);
+    expect(ask('good morning!')).toMatch(/^Good morning!/);
+    expect(ask('What is your name?')).toContain('My name is the AI Financial Assistant');
+    expect(ask('who are you')).toContain('My name is the AI Financial Assistant');
+    expect(ask('how are you?')).toMatch(/doing great|All good here/);
+    expect(ask('are you chatgpt?')).toContain("I'm an AI assistant, not a person");
+    expect(ask('who created you')).toContain('built into this Expense Tracker');
+    expect(ask('thank you!')).toMatch(/welcome|Happy to help/);
+    expect(ask('bye')).toMatch(/Goodbye|Take care/);
+    expect(ask('tell me a joke')).toMatch(/😄/);
+    expect(ask("what's the date today?")).toContain('**Sunday, October 25, 2026**');
+    expect(ask('what can you do')).toContain('Try asking');
+    expect(ask('okay')).toContain('Let me know what you');
+    // none of it lists the user's numbers
+    for (const q of ['hi', 'what is your name', 'thanks', 'bye']) expect(ask(q)).not.toMatch(/\$\d/);
+  });
+
+  it('a greeting in front of a real question still gets the real answer', () => {
+    const a = ask('Hi, how much did I spend on food?');
+    expect(a).toMatch(/^Hi! You spent \*\*\$20\.00\*\* on \*\*Food and Groceries\*\*/);
+    expect(ask('hello what is my biggest expense')).toMatch(/^Hello! Your biggest expense/);
+  });
+
   it('is friendly to greetings and never dumps your numbers when it is unsure', () => {
-    expect(ask('hi')).toContain('Try asking');
+    expect(ask('hi')).toMatch(/AI Financial Assistant.*What would you like to know/);
     const unsure = ask('purple monkey dishwasher');
     expect(unsure).toMatch(/couldn't find anything matching|not sure what you'd like to know/);
     expect(unsure).not.toMatch(/\$\d/); // no financial numbers listed

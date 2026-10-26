@@ -137,8 +137,6 @@ function parseQuery(question: string, ctx: AssistantContext, today: string): Par
 
   // The kind of answer wanted (first match wins, most specific first)
   const rules: Array<[RegExp, Intent]> = [
-    [/^\s*(hi|hello|hey|hii|yo|good (morning|afternoon|evening)|help|what can you do|who are you|how do you work)\b/, 'help'],
-    [/^\s*(thanks|thank you|thx|ok thanks|great|cool|nice)\b/, 'thanks'],
     [/\b(afford|can i (buy|spend|get|purchase)|should i (buy|spend|get)|is it ok to (buy|spend))\b/, 'afford'],
     [/\b(goal|goals|savings? target|target date)\b/, 'goals'],
     [/\b(compare|compared|versus|vs|difference|than (last|previous)|more than|less than|increase[d]?|decrease[d]?|went up|went down|trend)\b/, 'compare'],
@@ -237,10 +235,70 @@ const EXAMPLES = [
   'How much did I spend on coffee?',
 ];
 
+// ─── Small talk (answers like a person, no data needed) ──────────────────────
+
+const pickBy = (seed: string, options: string[]) => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return options[h % options.length];
+};
+
+const HELP_TEXT = (examples: string[]) =>
+  `I can answer questions about your spending, income, budget, savings goals and trends, using your real transactions. Try asking:\n\n${examples.map((e) => `• *"${e}"*`).join('\n')}\n\nYou can add a time like *today*, *yesterday*, *this week*, *last month* or a month name, and name a category or item (food, rent, coffee...).`;
+
+/** A natural reply to greetings and chit-chat, or null when the message is about the user's money. */
+export function smallTalk(question: string, today: string): string | null {
+  const t = question.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  const is = (re: RegExp) => re.test(t);
+
+  const timeGreeting = t.match(/^good (morning|afternoon|evening)\b/);
+  if (is(/^(hi+|hello+|hey+|heya|hiya|yo|sup|hola|namaste|howdy)( there| assistant| bot| buddy| friend| everyone)?$/) || is(/^good (morning|afternoon|evening)( there| assistant)?$/)) {
+    const hello = timeGreeting ? `Good ${timeGreeting[1]}!` : pickBy(t, ['Hi there!', 'Hello!', 'Hey!']);
+    return `${hello} 👋 I'm your AI Financial Assistant. What would you like to know about your money today?`;
+  }
+  if (is(/^(hi|hello|hey)( there)? (how are you|how are you doing|how r u|how are u)$/) || is(/^(how are you|how are you doing|how are u|how r u|how's it going|hows it going|how do you do|how have you been|whats up|what's up|what is up)( today| doing)?$/))
+    return pickBy(t, [`I'm doing great, thanks for asking! 😊 How can I help with your finances today?`, `All good here, thank you! 😊 What would you like to check: spending, budget or savings?`]);
+  if (is(/^(what is|what's|whats|tell me|say) (your|ur) name$/) || is(/^(who are you|what are you|what are you called|who r u|your name|do you have a name|what should i call you|what can i call you|introduce yourself|tell me about yourself)$/))
+    return `My name is the AI Financial Assistant. 😊 I'm here to help you understand your spending, budgets and savings, so ask me anything about your money.`;
+  if (is(/(who|what company) (made|created|built|developed|programmed|designed) you|who is your (creator|developer|maker)/))
+    return `I was built into this Expense Tracker app to help you keep track of your money. I answer from your own transactions, budgets and savings goals.`;
+  if (is(/^(are you|r u|are u) (a |an )?(real |human|person|robot|bot|ai|chatgpt|claude|gemini|gpt|alive|smart)/))
+    return `I'm an AI assistant, not a person. 🤖 I'm the AI Financial Assistant inside this app, and I answer from your own numbers.`;
+  if (is(/^(help|help me|can you help( me)?|what can you do|what do you do|how can you help( me)?|what can i ask( you)?|how do you work|what are your features|what are you able to do)$/))
+    return HELP_TEXT(EXAMPLES);
+  if (is(/^(thanks|thank you|thank u|thx|ty|thanks a lot|thank you so much|many thanks|cheers|great thanks|ok thanks|okay thanks|appreciate it|thanks a ton)( a lot| so much)?$/))
+    return pickBy(t, [`You're welcome! 😊 Anything else you'd like to check?`, `Happy to help! 😊 Ask me anything else about your money.`]);
+  if (is(/^(great|good job|nice|cool|awesome|perfect|amazing|wow|nice one|well done|good bot|great job|you re (great|awesome|amazing|smart|helpful|the best)|you are (great|awesome|amazing|smart|helpful|the best)|love it|i love you)$/))
+    return `Thank you, that's kind of you! 😊 What else can I help with?`;
+  if (is(/^(bye|goodbye|good bye|see you|see ya|later|good night|gn|take care|talk later|cya|bye bye|see you later)( soon| later)?$/))
+    return pickBy(t, [`Goodbye! 👋 Come back anytime to check on your spending.`, `Take care! 👋 I'll be here whenever you want to look at your finances.`]);
+  if (is(/\b(joke|make me laugh|something funny|funny)\b/))
+    return pickBy(t, [`Why did the budget go to therapy? It had too many unresolved expenses. 😄`, `I told my wallet a joke, but it didn't get it. It was too empty to laugh. 😄`, `Why don't piggy banks ever win arguments? They always break under pressure. 😄`]);
+  if (is(/^(what('s| is) (the )?(date|day|time)( today| now)?|what day is it( today)?|what is today'?s date|today'?s date|what's today's date)$/)) {
+    const d = fromISO(today).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return `Today is **${d}**. Want me to look at today's spending?`;
+  }
+  if (is(/^(ok|okay|k|kk|sure|yes|yeah|yep|yup|no|nope|alright|all right|got it|i see|hmm+|lol|haha+|hehe|oh|ah|oops|sorry)$/))
+    return `Alright! 😊 Let me know what you'd like to look at: your spending, budget, income or savings goals.`;
+  return null;
+}
+
 // ─── Answers ─────────────────────────────────────────────────────────────────
 
 export function answerQuestion(question: string, ctx: AssistantContext): string {
   const today = ctx.today ?? getTodayDateString();
+  const talk = smallTalk(question, today);
+  if (talk) return talk;
+
+  // "Hi, how much did I spend on food?": answer the question and say hi first
+  const opener = question.match(/^\s*(hi+|hello+|hey+|hiya|good (?:morning|afternoon|evening))[\s,!.:-]+(?=\S)/i);
+  if (opener) {
+    const rest = question.slice(opener[0].length);
+    const answer = answerQuestion(rest, ctx);
+    return `${opener[1].replace(/^./, (c) => c.toUpperCase())}! ${answer}`;
+  }
+
   let parsed = parseQuery(question, ctx, today);
 
   // Follow-ups such as "and last month?" or "what about food?" reuse the earlier question's meaning
@@ -292,7 +350,7 @@ export function answerQuestion(question: string, ctx: AssistantContext): string 
 
   switch (intent) {
     case 'help':
-      return `Hi! I answer questions using your real transactions, budget and savings goals. Try asking:\n\n${EXAMPLES.map((e) => `• *"${e}"*`).join('\n')}\n\nYou can add a time like *today*, *yesterday*, *this week*, *last month* or a month name, and name a category or item (food, rent, coffee...).`;
+      return HELP_TEXT(EXAMPLES);
 
     case 'thanks':
       return `You're welcome! Ask me anything else about your spending, budget or savings goals.`;
@@ -310,7 +368,7 @@ export function answerQuestion(question: string, ctx: AssistantContext): string 
         return `You haven't ${type === 'income' ? 'recorded any income' : 'spent anything'}${what ? ` on ${what}` : ''} ${when(period)}.`;
       }
       const all = sliceOf(ctx, { type, period });
-      const share = what && all.total > 0 ? ` That's **${pct(s.total, all.total)}%** of everything you ${type === 'income' ? 'earned' : 'spent'} in that time.` : '';
+      const share = what && all.total > 0 && s.total < all.total ? ` That's **${pct(s.total, all.total)}%** of everything you ${type === 'income' ? 'earned' : 'spent'} in that time.` : '';
       let budgetNote = '';
       if (type === 'expense' && !what && isSelectedMonth && ctx.monthSummary.budgetCents > 0)
         budgetNote = ` That's **${ctx.monthSummary.budgetUsagePercent.toFixed(1)}%** of your ${money(ctx.monthSummary.budgetCents)} budget.`;
@@ -489,3 +547,20 @@ export function answerQuestion(question: string, ctx: AssistantContext): string 
   }
 }
 
+
+const UNSURE = /not sure what you'd like to know|couldn't find anything matching/;
+
+export interface DetailedAnswer {
+  text: string;
+  /** false when the built-in engine could not work out what was asked */
+  understood: boolean;
+  /** true for greetings and chit-chat */
+  smallTalk: boolean;
+}
+
+export function answerQuestionDetailed(question: string, ctx: AssistantContext): DetailedAnswer {
+  const today = ctx.today ?? getTodayDateString();
+  const text = answerQuestion(question, ctx);
+  const talk = smallTalk(question, today) !== null;
+  return { text, smallTalk: talk, understood: talk || !UNSURE.test(text) };
+}
