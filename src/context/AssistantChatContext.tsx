@@ -55,7 +55,7 @@ const welcome = (month: string): ChatMessage => ({
 export const AssistantChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     monthSummary, categorySpendings, transactions, selectedMonth, budgetConfig, savingsGoals,
-    setIsSmartEntryOpen, setSmartEntryText, setIsQuickAddOpen, setActiveTab, activeTab, setCurrency, setDark,
+    setIsSmartEntryOpen, setSmartEntryText, setIsQuickAddOpen, setIsShareReportOpen, setActiveTab, activeTab, setCurrency, setDark,
     convertAmount, exchangeRateNote, currentUser, currency,
   } = useExpense();
   const owner = currentUser?.id ?? 'guest';
@@ -91,9 +91,10 @@ export const AssistantChatProvider: React.FC<{ children: React.ReactNode }> = ({
     else if (action.type === 'smart-entry') {
       setSmartEntryText(action.text);
       setIsSmartEntryOpen(true);
-    } else if (action.type === 'set-currency') setCurrency(action.code);
+    } else if (action.type === 'share-report') setIsShareReportOpen(true);
+    else if (action.type === 'set-currency') setCurrency(action.code);
     else if (action.type === 'dark-mode') setDark(action.value === 'toggle' ? (d) => !d : action.value);
-  }, [activeTab, setActiveTab, setIsQuickAddOpen, setSmartEntryText, setIsSmartEntryOpen, setCurrency, setDark]);
+  }, [activeTab, setActiveTab, setIsQuickAddOpen, setIsShareReportOpen, setSmartEntryText, setIsSmartEntryOpen, setCurrency, setDark]);
 
   const send = useCallback(async (query: string) => {
     const text = query.trim();

@@ -199,6 +199,18 @@ export const authService = {
     } catch {}
   },
 
+  /** Lets a signed-in user change their own PIN / password by proving they know the current one. */
+  changePin(userId: string, currentPin: string, newPin: string): { success: boolean; error?: string } {
+    const user = this.getUsers().find((u) => u.id === userId);
+    if (!user) return { success: false, error: 'Account not found.' };
+    if (user.pin !== currentPin.trim()) return { success: false, error: 'Your current PIN is not correct.' };
+    const pinError = validatePin(newPin.trim());
+    if (pinError) return { success: false, error: pinError };
+    if (newPin.trim() === user.pin) return { success: false, error: 'Your new PIN must be different from your current one.' };
+    this.saveUsers(this.getUsers().map((u) => (u.id === userId ? { ...u, pin: newPin.trim() } : u)));
+    return { success: true };
+  },
+
   /**
    * Sets a new PIN for an account. Callers must have proven ownership first
    * (see pinReset.ts: the emailed code) or be an admin.

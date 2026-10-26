@@ -14,11 +14,12 @@ import {
   ShieldCheck,
   CalendarDays,
   ChevronDown,
+  KeyRound,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { MonthPicker } from './MonthPicker';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
-import { DeleteAccountModal } from './AccountModals';
+import { DeleteAccountModal, ChangePinModal } from './AccountModals';
 import { useEscapeKey } from '../../utils/useEscapeKey';
 import { formatDate } from '../../utils/dates';
 
@@ -38,6 +39,7 @@ export const Header: React.FC = () => {
     logout,
   } = useExpense();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isChangePinOpen, setIsChangePinOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -147,6 +149,17 @@ export const Header: React.FC = () => {
                           <span>Dark mode</span>
                           <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-200'}`}>{dark ? 'On' : 'Off'}</span>
                         </button>
+                        {currentUser && (
+                          <button
+                            type="button"
+                            onClick={() => { setIsProfileOpen(false); setIsChangePinOpen(true); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer text-left text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                            title="Change your PIN / password"
+                          >
+                            <KeyRound className="w-4 h-4 text-slate-500" />
+                            <span>Change PIN / password</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => { setIsProfileOpen(false); setIsResetModalOpen(true); }}
@@ -264,6 +277,7 @@ export const Header: React.FC = () => {
         </div>
       </div>
       <DeleteAccountModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} />
+      <ChangePinModal isOpen={isChangePinOpen} onClose={() => setIsChangePinOpen(false)} />
     </header>
   );
 };

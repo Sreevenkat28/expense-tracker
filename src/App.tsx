@@ -14,6 +14,7 @@ import { ResetConfirmationModal } from './components/common/ResetConfirmationMod
 import { LoginView } from './components/auth/LoginView';
 import { AssistantChatProvider } from './context/AssistantChatContext';
 import { AssistantPopup } from './components/ai/AssistantPopup';
+import { ShareReportModal } from './components/common/ShareReportModal';
 import { AdminView } from './components/admin/AdminView';
 import { DailyLogView } from './components/daily/DailyLogView';
 
@@ -86,6 +87,9 @@ const MainLayout: React.FC = () => {
         isOpen={isResetModalOpen}
         onClose={() => setIsResetModalOpen(false)}
       />
+
+      {/* Share the monthly report */}
+      <ShareReportModal />
 
       {/* Assistant chat popup: follows you to every page except the AI page itself */}
       <AssistantPopup />

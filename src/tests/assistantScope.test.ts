@@ -104,6 +104,15 @@ describe('Assistant: doing things in the app', () => {
     expect(ask('how much did I spend on lunch').action).toBeUndefined();
   });
 
+  it('opens the share window for "send my report" style requests', () => {
+    for (const q of ['share my monthly report', 'send my expenses on whatsapp', 'email me a detailed report', 'I want a pdf report', 'share my summary on gmail'])
+      expect(ask(q).action, q).toEqual({ type: 'share-report' });
+    // but WhatsApp on its own is still not something the app can help with
+    expect(ask('open whatsapp and call mom').kind).toBe('out-of-scope');
+    // plain export questions still go to the CSV help
+    expect(ask('how do I export my data').action).toEqual({ type: 'navigate', tab: 'transactions' });
+  });
+
   it('never performs destructive actions itself', () => {
     for (const q of ['delete my account', 'sign me out', 'reset my ledger']) { const a = ask(q); expect(a.action, q).toBeUndefined(); expect(a.kind).toBe('app'); }
     expect(ask('delete my account').text).toContain('type DELETE');

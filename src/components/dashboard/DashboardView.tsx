@@ -10,6 +10,7 @@ import {
   Calendar,
   Sparkles,
   Wand2,
+  Share2,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import { formatMonthName } from '../../utils/dates';
@@ -27,6 +28,7 @@ export const DashboardView: React.FC = () => {
     isSampleData,
     setIsQuickAddOpen,
     setIsSmartEntryOpen,
+    setIsShareReportOpen,
     setActiveTab,
     dark,
     formatAmount,
@@ -123,6 +125,14 @@ export const DashboardView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsShareReportOpen(true)}
+            title="Share a detailed report of this month on WhatsApp, Gmail or as a PDF"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Share report</span>
+          </button>
           <button
             onClick={() => setIsSmartEntryOpen(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-xl transition-all border border-indigo-200 dark:border-indigo-800 cursor-pointer"

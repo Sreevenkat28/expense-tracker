@@ -22,6 +22,8 @@ import {
 } from '../../types';
 import { formatCurrency, isValidAmount, getCurrencyInfo, SUPPORTED_CURRENCIES } from '../../utils/currency';
 import { getTodayDateString } from '../../utils/dates';
+import { BalanceWarning } from './BalanceWarning';
+import type { BalanceCheck } from '../../utils/balance';
 
 interface SmartEntryModalProps {
   isOpen: boolean;
@@ -32,7 +34,8 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addTransaction, selectedMonth, selectedDate, currency, formatAmount, convertToDisplay, smartEntryText, setSmartEntryText } = useExpense();
+  const { addTransaction, selectedMonth, selectedDate, currency, formatAmount, convertToDisplay, smartEntryText, setSmartEntryText, checkBalance } = useExpense();
+  const [balanceWarn, setBalanceWarn] = useState<BalanceCheck | null>(null);
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [parsed, setParsed] = useState<{
@@ -68,6 +71,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
     }
 
     setErrorMsg(null);
+    setBalanceWarn(null);
     setParsed({
       type: res.type,
       amountStr: (res.amountCents / 100).toFixed(2),
@@ -106,6 +110,15 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
       return;
     }
 
+    // Spending more than you have: warn first, and add it only if the user confirms again
+    if (parsed.type === 'expense' && !balanceWarn) {
+      const check = checkBalance(convertToDisplay(val.cents!, parsed.currency));
+      if (check.insufficient) {
+        setBalanceWarn(check);
+        return;
+      }
+    }
+
     addTransaction({
       type: parsed.type,
       amountCents: val.cents!,
@@ -116,6 +129,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
     });
 
     // Reset and close
+    setBalanceWarn(null);
     setInputPrompt('');
     setParsed(null);
     setHasParsed(false);
@@ -203,7 +217,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
                 </label>
                 <select
                   value={parsed.type}
-                  onChange={(e) => setParsed({ ...parsed, type: e.target.value as TransactionType })}
+                  onChange={(e) => { setBalanceWarn(null); setParsed({ ...parsed, type: e.target.value as TransactionType }); }}
                   className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
                 >
                   <option value="expense">Expense (-)</option>
@@ -219,7 +233,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
                 <div className="flex gap-1.5">
                   <select
                     value={parsed.currency}
-                    onChange={(e) => setParsed({ ...parsed, currency: e.target.value, currencyDetected: false })}
+                    onChange={(e) => { setBalanceWarn(null); setParsed({ ...parsed, currency: e.target.value, currencyDetected: false }); }}
                     aria-label="Currency of this amount"
                     className="px-1.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
                   >
@@ -232,7 +246,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
                     step="any"
                     min="0"
                     value={parsed.amountStr}
-                    onChange={(e) => setParsed({ ...parsed, amountStr: e.target.value })}
+                    onChange={(e) => { setBalanceWarn(null); setParsed({ ...parsed, amountStr: e.target.value }); }}
                     className="w-full min-w-0 px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
                   />
                 </div>
@@ -299,10 +313,12 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
               );
             })()}
 
+            {balanceWarn && parsed.type === 'expense' && <BalanceWarning check={balanceWarn} />}
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setParsed(null)}
+                onClick={() => { setBalanceWarn(null); setParsed(null); }}
                 className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl cursor-pointer"
               >
                 Cancel
@@ -313,7 +329,7 @@ export const SmartEntryModal: React.FC<SmartEntryModalProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Confirm & Add Transaction</span>
+                <span>{balanceWarn ? 'Add anyway' : 'Confirm & Add Transaction'}</span>
               </button>
             </div>
           </div>

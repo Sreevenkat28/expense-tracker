@@ -13,6 +13,7 @@ import {
   Printer,
   Wand2,
   Upload,
+  Share2,
 } from 'lucide-react';
 import { useExpense } from '../../context/ExpenseContext';
 import {
@@ -32,6 +33,7 @@ export const TransactionsView: React.FC = () => {
     selectedMonth,
     setIsQuickAddOpen,
     setIsSmartEntryOpen,
+    setIsShareReportOpen,
     setEditingTransaction,
     deleteTransaction,
     budgetConfig,
@@ -190,6 +192,16 @@ export const TransactionsView: React.FC = () => {
         </div>
 
         <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
+          {/* Share report */}
+          <button
+            onClick={() => setIsShareReportOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-xl transition-colors border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+            title="Share a detailed report of this month on WhatsApp, Gmail or as a PDF"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Share report</span>
+          </button>
+
           {/* Import CSV button */}
           <button
             onClick={() => setIsImportOpen(true)}

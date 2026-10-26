@@ -21,6 +21,8 @@ import {
 } from '../../types';
 import { formatDateFull, getTodayDateString, getDaysInMonth } from '../../utils/dates';
 import { isValidAmount } from '../../utils/currency';
+import { BalanceWarning } from '../common/BalanceWarning';
+import type { BalanceCheck } from '../../utils/balance';
 
 function shiftDay(iso: string, delta: number): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -45,6 +47,7 @@ export const DailyLogView: React.FC = () => {
     monthSummary,
     setActiveTab,
     activeDay,
+    checkBalance,
   } = useExpense();
 
   const today = getTodayDateString();
@@ -64,6 +67,7 @@ export const DailyLogView: React.FC = () => {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<Category>('Food and groceries');
   const [error, setError] = useState<string | null>(null);
+  const [balanceWarn, setBalanceWarn] = useState<BalanceCheck | null>(null);
 
   const dayTransactions = useMemo(
     () =>
@@ -116,6 +120,7 @@ export const DailyLogView: React.FC = () => {
   const categories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   const handleTypeChange = (next: TransactionType) => {
+    setBalanceWarn(null);
     setType(next);
     setCategory(next === 'expense' ? 'Food and groceries' : 'Salary');
   };
@@ -127,6 +132,14 @@ export const DailyLogView: React.FC = () => {
       setError(check.error ?? 'Enter a valid amount');
       return;
     }
+    // Spending more than you have: warn first, and add it only if the user presses the button again
+    if (type === 'expense' && !balanceWarn) {
+      const balance = checkBalance(check.cents);
+      if (balance.insufficient) {
+        setBalanceWarn(balance);
+        return;
+      }
+    }
     addTransaction({
       type,
       amountCents: check.cents,
@@ -137,6 +150,7 @@ export const DailyLogView: React.FC = () => {
     setAmount('');
     setDescription('');
     setError(null);
+    setBalanceWarn(null);
   };
 
   const inputCls =
@@ -278,6 +292,7 @@ export const DailyLogView: React.FC = () => {
                   value={amount}
                   onChange={(e) => {
                     setAmount(e.target.value);
+                    setBalanceWarn(null);
                     if (error) setError(null);
                   }}
                   className={`${inputCls} pl-8`}
@@ -305,6 +320,8 @@ export const DailyLogView: React.FC = () => {
               </select>
             </div>
 
+            {balanceWarn && type === 'expense' && <BalanceWarning check={balanceWarn} />}
+
             {error && (
               <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1 m-0">
                 <AlertCircle className="w-3.5 h-3.5" /> {error}
@@ -316,7 +333,7 @@ export const DailyLogView: React.FC = () => {
               className="w-full py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Add {type === 'expense' ? 'Expense' : 'Income'}</span>
+              <span>{balanceWarn ? 'Add anyway' : `Add ${type === 'expense' ? 'Expense' : 'Income'}`}</span>
             </button>
           </form>
 

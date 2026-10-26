@@ -13,6 +13,7 @@ import { storageService } from '../services/storage';
 import { authService } from '../services/authService';
 import { getCurrentYearMonth, getDaysInMonth, getTodayDateString } from '../utils/dates';
 import { RateSnapshot, getCachedRates, loadRates, convertCents, describeRate } from '../utils/exchange';
+import { BalanceCheck, checkExpenseAgainstBalance } from '../utils/balance';
 import {
   convertLedger,
   convertBudgetConfig,
@@ -87,6 +88,8 @@ interface ExpenseContextType {
   // Exchange rates used when switching currency
   convertToDisplay: (cents: number, fromCurrency: string) => number; // amount in another currency -> selected currency
   convertAmount: (amount: number, from: string, to: string) => number; // whole units, at the app's current rates
+  /** Would this expense (in the selected currency) take your balance below zero? Pass the id when editing an entry. */
+  checkBalance: (amountCents: number, excludeTxId?: string) => BalanceCheck;
   exchangeRateNote: string; // e.g. "1 USD = 95 INR"
   ratesSource: 'live' | 'cached' | 'fallback';
   ratesUpdatedAt: number | null;
@@ -125,6 +128,8 @@ interface ExpenseContextType {
   setIsQuickAddOpen: (open: boolean) => void;
   isSmartEntryOpen: boolean;
   setIsSmartEntryOpen: (open: boolean) => void;
+  isShareReportOpen: boolean;
+  setIsShareReportOpen: (open: boolean) => void;
   /** Text to pre-fill (and parse) the next time Smart Entry opens; cleared once used */
   smartEntryText: string;
   setSmartEntryText: (text: string) => void;
@@ -215,6 +220,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activeTab, setActiveTabRaw] = useState<NavigationTab>('dashboard');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSmartEntryOpen, setIsSmartEntryOpen] = useState(false);
+  const [isShareReportOpen, setIsShareReportOpen] = useState(false);
   const [smartEntryText, setSmartEntryText] = useState('');
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -257,6 +263,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const convertAmount = useCallback(
     (amount: number, from: string, to: string) => convertCents(Math.round(amount * 100), from, to, rates) / 100,
     [rates]
+  );
+  const checkBalance = useCallback(
+    (amountCents: number, excludeTxId?: string) => checkExpenseAgainstBalance(view.transactions, view.budgetConfig.openingBalanceCents, amountCents, excludeTxId),
+    [view]
   );
   const convertToDisplay = useCallback(
     (cents: number, fromCurrency: string) => convertCents(cents, fromCurrency, currency, rates),
@@ -513,6 +523,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currencyInfo,
     formatAmount,
     convertToDisplay,
+    checkBalance,
     exchangeRateNote: describeRate('USD', currency, rates),
     ratesSource: rateInfo.source,
     ratesUpdatedAt: rateInfo.updatedAt,
@@ -539,6 +550,8 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsQuickAddOpen,
     isSmartEntryOpen,
     setIsSmartEntryOpen,
+    isShareReportOpen,
+    setIsShareReportOpen,
     smartEntryText,
     setSmartEntryText,
     convertAmount,

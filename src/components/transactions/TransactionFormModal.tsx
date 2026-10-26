@@ -11,6 +11,8 @@ import {
 } from '../../types';
 import { centsToDollars, isValidAmount } from '../../utils/currency';
 import { getTodayDateString } from '../../utils/dates';
+import { BalanceWarning } from '../common/BalanceWarning';
+import type { BalanceCheck } from '../../utils/balance';
 
 interface TransactionFormModalProps {
   isOpen: boolean;
@@ -23,7 +25,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   onClose,
   transactionToEdit,
 }) => {
-  const { addTransaction, updateTransaction, selectedMonth, selectedDate, currencyInfo } = useExpense();
+  const { addTransaction, updateTransaction, selectedMonth, selectedDate, currencyInfo, checkBalance } = useExpense();
   const currencySymbol = currencyInfo.symbol;
 
   const [type, setType] = useState<TransactionType>('expense');
@@ -32,6 +34,8 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   const [category, setCategory] = useState<Category>(EXPENSE_CATEGORIES[0]);
   const [date, setDate] = useState<string>('');
   const [errors, setErrors] = useState<{ amount?: string; description?: string; date?: string }>({});
+  // Set when this expense would take the balance below zero; pressing the button again adds it anyway
+  const [balanceWarn, setBalanceWarn] = useState<BalanceCheck | null>(null);
 
   useEffect(() => {
     if (transactionToEdit) {
@@ -52,9 +56,11 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       setDate(initialDate);
     }
     setErrors({});
+    setBalanceWarn(null);
   }, [transactionToEdit, isOpen, selectedMonth, selectedDate]);
 
   const handleTypeChange = (newType: TransactionType) => {
+    setBalanceWarn(null);
     setType(newType);
     if (newType === 'expense') {
       if (!EXPENSE_CATEGORIES.includes(category as any)) {
@@ -93,6 +99,15 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
     }
 
     const amountCents = amountVal.cents!;
+
+    // Spending more than you have: warn first, and add it only if the user confirms
+    if (type === 'expense' && !balanceWarn) {
+      const check = checkBalance(amountCents, transactionToEdit?.id);
+      if (check.insufficient) {
+        setBalanceWarn(check);
+        return;
+      }
+    }
 
     if (transactionToEdit) {
       updateTransaction(transactionToEdit.id, {
@@ -194,6 +209,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
                 value={amountStr}
                 onChange={(e) => {
                   setAmountStr(e.target.value);
+                  setBalanceWarn(null);
                   if (errors.amount) setErrors((prev) => ({ ...prev, amount: undefined }));
                 }}
                 className={`w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-lg font-bold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-hidden focus:ring-2 transition-all ${
@@ -305,6 +321,8 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
             </div>
           </div>
 
+          {balanceWarn && type === 'expense' && <BalanceWarning check={balanceWarn} />}
+
           {/* Form Actions */}
           <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-3">
             <button
@@ -323,7 +341,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
               }`}
             >
               <Check className="w-4 h-4" />
-              <span>{transactionToEdit ? 'Save Changes' : 'Record Transaction'}</span>
+              <span>{balanceWarn ? 'Add anyway' : transactionToEdit ? 'Save Changes' : 'Record Transaction'}</span>
             </button>
           </div>
         </form>
