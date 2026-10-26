@@ -21,6 +21,17 @@ interface ChatMessage {
   timestamp: string;
 }
 
+/** Shows **bold** and *italic* from the assistant's answers as real formatting instead of raw asterisks. */
+const RichText: React.FC<{ text: string }> = ({ text }) => (
+  <>
+    {text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g).map((part, i) => {
+      if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) return <strong key={i} className="font-bold">{part.slice(2, -2)}</strong>;
+      if (part.length > 2 && part.startsWith('*') && part.endsWith('*')) return <em key={i}>{part.slice(1, -1)}</em>;
+      return <React.Fragment key={i}>{part}</React.Fragment>;
+    })}
+  </>
+);
+
 export const AIAssistantView: React.FC = () => {
   const {
     monthSummary,
@@ -37,7 +48,7 @@ export const AIAssistantView: React.FC = () => {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Hello! I am your AI Financial Assistant.\n\nI calculate exact answers directly from your recorded expenses and income for **${selectedMonth}** with zero hallucinated figures.\n\nAsk me any question about your spending, income, budget, or savings!`,
+      text: `Hello! I am your AI Financial Assistant.\n\nAsk me a question and I'll answer it from your real transactions, for example *"How much did I spend on food last month?"* or *"Can I afford 5000 this month?"*. I'm looking at **${selectedMonth}** unless you name another time (today, this week, last month, a month name).`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -52,8 +63,10 @@ export const AIAssistantView: React.FC = () => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Calculate exact mathematical answer
+    // Calculate exact mathematical answer (the last question lets "and last month?" make sense)
+    const lastUserQuestion = [...messages].reverse().find((m) => m.sender === 'user')?.text;
     const answer = answerSpendingQuestion(query, {
+      previousQuestion: lastUserQuestion,
       monthSummary,
       categorySpendings,
       transactions,
@@ -86,11 +99,13 @@ export const AIAssistantView: React.FC = () => {
 
   const quickPrompts = [
     'How much did I spend this month?',
+    'How much did I spend today?',
     'What is my highest expense?',
+    'Did I spend more than last month?',
     'Am I within my budget?',
     'How much did I spend on food?',
+    'Where did most of my money go?',
     'How are my savings goals doing?',
-    'Summarize my income vs expenses',
   ];
 
   return (
@@ -161,7 +176,7 @@ export const AIAssistantView: React.FC = () => {
                       : 'bg-slate-100 dark:bg-slate-700/60 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200/60 dark:border-slate-600/60'
                   }`}
                 >
-                  {msg.text}
+                  {isUser ? msg.text : <RichText text={msg.text} />}
                   <span
                     className={`block text-[10px] mt-1.5 ${
                       isUser ? 'text-slate-300' : 'text-slate-400'

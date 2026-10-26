@@ -8,7 +8,8 @@ import {
   BudgetConfig,
   SavingsGoal,
 } from '../types';
-import { formatCurrency, centsToDollars, getCurrencyInfo } from '../utils/currency';
+import { getCurrencyInfo } from '../utils/currency';
+import { answerQuestion, AssistantContext } from './assistant';
 
 export interface ParsedSmartEntry {
   success: boolean;
@@ -219,113 +220,9 @@ export function parseSmartTransaction(input: string, defaultDate: string, defaul
 }
 
 /**
- * AI Assistant grounded financial answers.
- * Strictly calculates all numbers from real user data so nothing is hallucinated.
+ * AI Assistant: answers the question that was asked (see assistant.ts for how).
+ * Every number is calculated from the real data, so nothing is made up.
  */
-export function answerSpendingQuestion(
-  question: string,
-  context: {
-    monthSummary: MonthSummary;
-    categorySpendings: CategorySpending[];
-    transactions: Transaction[];
-    selectedMonth: string;
-    budgetConfig: BudgetConfig;
-    savingsGoals: SavingsGoal[];
-  }
-): string {
-  const q = question.toLowerCase().trim();
-  const { monthSummary, categorySpendings, transactions, selectedMonth, budgetConfig, savingsGoals } = context;
-
-  const monthExpenses = transactions.filter(t => t.date.startsWith(selectedMonth) && t.type === 'expense');
-  const monthIncome = transactions.filter(t => t.date.startsWith(selectedMonth) && t.type === 'income');
-
-  // Highest spending category
-  const topCat = categorySpendings.find(c => c.amountCents > 0);
-
-  // 1. Budget queries
-  if (q.includes('budget') || q.includes('remaining') || q.includes('limit')) {
-    if (monthSummary.budgetCents <= 0) {
-      return `You haven't set a budget ceiling for **${selectedMonth}** yet. You can set a monthly spending limit in the **Budgets** section. So far, you have spent **${formatCurrency(monthSummary.totalExpensesCents)}**.`;
-    }
-    const pct = monthSummary.budgetUsagePercent.toFixed(1);
-    if (monthSummary.remainingBudgetCents < 0) {
-      return `⚠️ **Over Budget Warning:** You have exceeded your **${formatCurrency(monthSummary.budgetCents)}** budget for ${selectedMonth} by **${formatCurrency(Math.abs(monthSummary.remainingBudgetCents))}** (${pct}% used). Total spent is **${formatCurrency(monthSummary.totalExpensesCents)}**.`;
-    }
-    return `✅ **Budget Status:** You have **${formatCurrency(monthSummary.remainingBudgetCents)}** left from your **${formatCurrency(monthSummary.budgetCents)}** budget for ${selectedMonth} (${pct}% utilized). Total spent is **${formatCurrency(monthSummary.totalExpensesCents)}**.`;
-  }
-
-  // 2. Food / Grocery queries
-  if (q.includes('food') || q.includes('grocer') || q.includes('lunch') || q.includes('dinner')) {
-    const foodCat = categorySpendings.find(c => c.category === 'Food and groceries');
-    const spent = foodCat ? foodCat.amountCents : 0;
-    const count = foodCat ? foodCat.count : 0;
-    const pct = foodCat ? foodCat.percentage.toFixed(1) : '0';
-    return `🥗 You have spent **${formatCurrency(spent)}** across **${count}** transaction(s) on **Food and Groceries** in ${selectedMonth}, representing **${pct}%** of your total monthly expenses.`;
-  }
-
-  // 3. Transportation queries
-  if (q.includes('transport') || q.includes('uber') || q.includes('gas') || q.includes('fuel')) {
-    const cat = categorySpendings.find(c => c.category === 'Transportation');
-    const spent = cat ? cat.amountCents : 0;
-    return `🚗 You spent **${formatCurrency(spent)}** on **Transportation** in ${selectedMonth} (${cat ? cat.count : 0} transactions).`;
-  }
-
-  // 4. Shopping queries
-  if (q.includes('shopping') || q.includes('amazon') || q.includes('clothes')) {
-    const cat = categorySpendings.find(c => c.category === 'Shopping');
-    const spent = cat ? cat.amountCents : 0;
-    return `🛍️ You spent **${formatCurrency(spent)}** on **Shopping** in ${selectedMonth} (${cat ? cat.count : 0} transactions).`;
-  }
-
-  // 5. Highest / Top expense
-  if (q.includes('highest') || q.includes('biggest') || q.includes('most expensive') || q.includes('top category') || q.includes('top spend')) {
-    if (monthExpenses.length === 0) {
-      return `You have no recorded expenses in **${selectedMonth}**.`;
-    }
-    const maxTx = [...monthExpenses].sort((a, b) => b.amountCents - a.amountCents)[0];
-    const topCatStr = topCat ? `Your biggest category is **${topCat.category}** with **${formatCurrency(topCat.amountCents)}** (${topCat.percentage.toFixed(1)}%).` : '';
-    return `🏷️ Your single largest recorded expense in ${selectedMonth} was **"${maxTx.description}"** for **${formatCurrency(maxTx.amountCents)}** (${maxTx.category}) on ${maxTx.date}.\n\n${topCatStr}`;
-  }
-
-  // 6. Income queries
-  if (q.includes('income') || q.includes('earn') || q.includes('salary') || q.includes('made')) {
-    return `💰 In **${selectedMonth}**, your total recorded income is **${formatCurrency(monthSummary.totalIncomeCents)}** across **${monthIncome.length}** deposit(s).`;
-  }
-
-  // 7. Savings goals
-  if (q.includes('savings goal') || q.includes('saving goal') || q.includes('goals') || q.includes('target')) {
-    if (savingsGoals.length === 0) {
-      return `You haven't created any savings goals yet. Head to the **Savings Goals** tab to set a target for an emergency fund, vacation, or big purchase!`;
-    }
-    const summaries = savingsGoals.map(g => {
-      const pct = Math.min(100, Math.round((g.currentCents / g.targetCents) * 100));
-      return `• **${g.name}**: ${formatCurrency(g.currentCents)} / ${formatCurrency(g.targetCents)} (${pct}%)`;
-    }).join('\n');
-    return `🎯 **Your Savings Goals Progress:**\n\n${summaries}`;
-  }
-
-  // 8. Total spending / Overview / Summary
-  if (q.includes('spend') || q.includes('total') || q.includes('summary') || q.includes('overview') || q.includes('how much')) {
-    const net = monthSummary.netSavingsCents;
-    const netFormatted = formatCurrency(Math.abs(net));
-    const netStatus = net >= 0 ? `positive cash flow (+${netFormatted})` : `deficit (-${netFormatted})`;
-
-    return `📊 **${selectedMonth} Financial Summary:**\n` +
-      `• **Total Income:** ${formatCurrency(monthSummary.totalIncomeCents)}\n` +
-      `• **Total Expenses:** ${formatCurrency(monthSummary.totalExpensesCents)} (${monthExpenses.length} transactions)\n` +
-      `• **Net Amount:** ${net >= 0 ? '+' : '-'}${netFormatted} (${netStatus})\n` +
-      `• **Average Daily Spend:** ${formatCurrency(monthSummary.averageDailySpendingCents)}/day\n` +
-      (monthSummary.budgetCents > 0
-        ? `• **Budget Remaining:** ${formatCurrency(monthSummary.remainingBudgetCents)} of ${formatCurrency(monthSummary.budgetCents)}\n`
-        : `• **Budget:** Not configured for this month\n`) +
-      (topCat ? `• **Top Category:** ${topCat.category} (${formatCurrency(topCat.amountCents)})` : '');
-  }
-
-  // 9. General fallback with exact totals
-  return `🤖 Here are your calculated financial numbers for **${selectedMonth}**:\n\n` +
-    `• **Total Income:** ${formatCurrency(monthSummary.totalIncomeCents)}\n` +
-    `• **Total Expenses:** ${formatCurrency(monthSummary.totalExpensesCents)}\n` +
-    `• **Net Cashflow:** ${monthSummary.netSavingsCents >= 0 ? '+' : ''}${formatCurrency(monthSummary.netSavingsCents)}\n` +
-    (monthSummary.budgetCents > 0 ? `• **Budget Left:** ${formatCurrency(monthSummary.remainingBudgetCents)}\n` : '') +
-    `\nFeel free to ask specific questions like *"How much did I spend on food?"*, *"What was my biggest expense?"*, or *"Am I within budget?"*.`;
+export function answerSpendingQuestion(question: string, context: AssistantContext): string {
+  return answerQuestion(question, context);
 }
