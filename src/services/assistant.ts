@@ -19,6 +19,7 @@ import {
 import { formatCurrency } from '../utils/currency';
 import { CATEGORY_WORDS, type AssistantContext } from './assistantShared';
 import { solveMath } from './calculator';
+import { correctSpelling } from './spellcheck';
 import { matchProfile, matchAppRequest, isOffTopic, looksAppRelated, OUT_OF_SCOPE_TEXT, type AssistantAction } from './appKnowledge';
 export type { AssistantAction } from './appKnowledge';
 export type { AssistantContext } from './assistantShared';
@@ -551,7 +552,7 @@ const done = (text: string, kind: AnswerKind, extra: Partial<DetailedAnswer> = {
 });
 
 /** Works out what the message is about and answers it, or politely declines when it is not about this app. */
-export function answerQuestionDetailed(question: string, ctx: AssistantContext): DetailedAnswer {
+function answerOnce(question: string, ctx: AssistantContext): DetailedAnswer {
   const today = ctx.today ?? getTodayDateString();
 
   // Greetings, name, thanks, jokes...
@@ -566,7 +567,7 @@ export function answerQuestionDetailed(question: string, ctx: AssistantContext):
   // "Hi, how much did I spend on food?": say hi, then answer the real question
   const opener = question.match(/^\s*(hi+|hello+|hey+|hiya|good (?:morning|afternoon|evening))[\s,!.:-]+(?=\S)/i);
   if (opener) {
-    const inner = answerQuestionDetailed(question.slice(opener[0].length), ctx);
+    const inner = answerOnce(question.slice(opener[0].length), ctx);
     return { ...inner, text: `${opener[1].replace(/^./, (c) => c.toUpperCase())}! ${inner.text}` };
   }
 
@@ -593,6 +594,38 @@ export function answerQuestionDetailed(question: string, ctx: AssistantContext):
 
   const text = answerFromData(question, ctx);
   return done(text, UNSURE.test(text) ? 'unclear' : 'data');
+}
+
+
+const UNDERSTOOD: AnswerKind[] = ['chat', 'identity', 'profile', 'math', 'app', 'data'];
+
+/** Words from the user's own data, so a typo of "coffee" or "Emergency Fund" can be fixed too. */
+function ownWords(ctx: AssistantContext): string[] {
+  const words = new Set<string>();
+  const add = (text?: string) => text?.toLowerCase().match(/[a-z]{3,}/g)?.forEach((w) => words.add(w));
+  ctx.transactions.slice(0, 1500).forEach((t) => add(t.description));
+  ctx.savingsGoals.forEach((g) => add(g.name));
+  add(ctx.profile?.name);
+  add(ctx.profile?.username);
+  return [...words];
+}
+
+/**
+ * The assistant's answer to a message. If it cannot make sense of it as typed, it tries again with likely
+ * spelling mistakes fixed ("turn on lghit mode" -> "turn on light mode") and uses that only if it then understands.
+ */
+export function answerQuestionDetailed(question: string, ctx: AssistantContext): DetailedAnswer {
+  const first = answerOnce(question, ctx);
+  if (first.kind !== 'out-of-scope' && first.kind !== 'unclear') return first;
+
+  const fixed = correctSpelling(question, ownWords(ctx));
+  if (!fixed.changed) return first;
+  const second = answerOnce(fixed.text, ctx);
+  if (!UNDERSTOOD.includes(second.kind)) return first;
+
+  // Say what was understood, except for plain chit-chat where it would just be noise
+  const quiet = second.kind === 'chat' || second.kind === 'identity';
+  return { ...second, text: quiet ? second.text : `*I read that as "${fixed.text.trim()}".*\n\n${second.text}` };
 }
 
 export function answerQuestion(question: string, ctx: AssistantContext): string {
