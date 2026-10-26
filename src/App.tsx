@@ -12,6 +12,8 @@ import { TransactionFormModal } from './components/transactions/TransactionFormM
 import { SmartEntryModal } from './components/common/SmartEntryModal';
 import { ResetConfirmationModal } from './components/common/ResetConfirmationModal';
 import { LoginView } from './components/auth/LoginView';
+import { AssistantChatProvider } from './context/AssistantChatContext';
+import { AssistantPopup } from './components/ai/AssistantPopup';
 import { AdminView } from './components/admin/AdminView';
 import { DailyLogView } from './components/daily/DailyLogView';
 
@@ -85,6 +87,9 @@ const MainLayout: React.FC = () => {
         onClose={() => setIsResetModalOpen(false)}
       />
 
+      {/* Assistant chat popup: follows you to every page except the AI page itself */}
+      <AssistantPopup />
+
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 py-5 text-xs text-slate-500 dark:text-slate-400 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -113,7 +118,9 @@ const MainLayout: React.FC = () => {
 export default function App() {
   return (
     <ExpenseProvider>
-      <MainLayout />
+      <AssistantChatProvider>
+        <MainLayout />
+      </AssistantChatProvider>
     </ExpenseProvider>
   );
 }
