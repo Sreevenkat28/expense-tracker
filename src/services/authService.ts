@@ -9,6 +9,11 @@ const USERS_STORAGE_KEY = 'expense_tracker_profiles_v1';
 const ACTIVE_USER_SESSION_KEY = 'expense_tracker_active_session_v1';
 const REMEMBERED_USER_KEY = 'expense_tracker_remembered_user_v1';
 
+const LAST_SEEN_KEY = 'expense_tracker_last_seen_v1';
+/** Closed the tab for longer than this and the next visit asks you to log in again. */
+export const SESSION_GRACE_MS = 5 * 60 * 1000;
+const HEARTBEAT_MS = 10 * 1000;
+
 function validatePin(pin: string): string | null {
   if (!pin || pin.length < 4) return 'PIN / Password must be at least 4 characters.';
   return null;
@@ -193,6 +198,40 @@ export const authService = {
     } catch {
       return null;
     }
+  },
+
+  /**
+   * Call once when the app opens. If the app was last open more than five minutes ago (tab closed),
+   * the saved session is dropped so the login screen shows. Returns true if a session was ended.
+   */
+  expireStaleSession(now: number = Date.now()): boolean {
+    try {
+      if (!localStorage.getItem(ACTIVE_USER_SESSION_KEY)) return false;
+      const seen = Number(localStorage.getItem(LAST_SEEN_KEY));
+      if (seen && now - seen <= SESSION_GRACE_MS) return false;
+      this.logout();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** While the app is open, keeps stamping "last seen" so a tab left open never expires. */
+  startSessionHeartbeat(): () => void {
+    const stamp = () => {
+      try {
+        if (localStorage.getItem(ACTIVE_USER_SESSION_KEY)) localStorage.setItem(LAST_SEEN_KEY, String(Date.now()));
+      } catch {}
+    };
+    stamp();
+    const timer = setInterval(stamp, HEARTBEAT_MS);
+    window.addEventListener('pagehide', stamp);
+    document.addEventListener('visibilitychange', stamp);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('pagehide', stamp);
+      document.removeEventListener('visibilitychange', stamp);
+    };
   },
 
   /** Ends the session only. The account and its data stay on this device. */

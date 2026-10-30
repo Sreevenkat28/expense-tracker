@@ -40,6 +40,16 @@ describe('Accounts: email, sign out, delete, PIN reset, admin', () => {
     expect(dup.error).toMatch(/already used/);
   });
 
+  it('keeps the session within 5 minutes of the tab closing, and ends it after', () => {
+    authService.register('Alice', 'alice', 'alice@x.com', '1234');
+    const t0 = Date.now();
+    localStorage.setItem('expense_tracker_last_seen_v1', String(t0));
+    expect(authService.expireStaleSession(t0 + 4 * 60 * 1000)).toBe(false);
+    expect(authService.getCurrentUser()).not.toBeNull();
+    expect(authService.expireStaleSession(t0 + 6 * 60 * 1000)).toBe(true);
+    expect(authService.getCurrentUser()).toBeNull();
+  });
+
   it('refuses an email already used, including Gmail dot and plus variants', () => {
     expect(authService.register('A', 'alice', 'ab.c@gmail.com', '1234').success).toBe(true);
     for (const e of ['AB.C@gmail.com', 'abc@gmail.com', 'a.bc+shop@gmail.com', 'abc@googlemail.com']) {
