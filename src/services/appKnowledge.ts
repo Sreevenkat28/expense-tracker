@@ -52,7 +52,7 @@ export function matchProfile(question: string, ctx: AssistantContext): string | 
       `• **Name:** ${p.name}`,
       `• **Username:** @${p.username}`,
       `• **Email:** ${p.email ?? 'not on file'}`,
-      `• **Role:** ${p.role === 'admin' ? 'Admin' : 'Standard user'}`,
+      p.role === 'admin' ? `• **Role:** Admin` : '',
       p.createdAt ? `• **Member since:** ${formatDate(p.createdAt.slice(0, 10))}` : '',
       p.lastLoginAt ? `• **Last login:** ${formatDate(p.lastLoginAt.slice(0, 10))}` : '',
       `• **Currency:** ${ctx.currency ?? p.currency ?? 'USD'}`,
@@ -63,7 +63,7 @@ export function matchProfile(question: string, ctx: AssistantContext): string | 
   if (name) return `Your name is **${p.name}**${p.username ? ` (username **@${p.username}**)` : ''}. 😊`;
   if (username) return `Your username is **@${p.username}**.`;
   if (email) return p.email ? `Your email is **${p.email}**.` : `There's no email saved on your account (it was created before email sign-up existed).`;
-  if (role) return p.role === 'admin' ? `Yes, you're an **admin**. You can manage accounts from the **Admin** tab.` : `You're a **standard user**, so you don't have the Admin tab. An admin can change that.`;
+  if (role) return p.role === 'admin' ? `Yes, you're an **admin**. You can manage accounts from the **Admin** tab.` : `I can't help with that one, but I can tell you your name, username, email, join date and last login.`;
   if (joined) return p.createdAt ? `You joined on **${formatDate(p.createdAt.slice(0, 10))}**.` : `I don't have a join date for your account.`;
   return p.lastLoginAt ? `Your last login was on **${formatDate(p.lastLoginAt.slice(0, 10))}**.` : `I don't have a last-login date for your account.`;
 }
@@ -154,7 +154,7 @@ export function matchAppRequest(question: string, ctx: AssistantContext, today: 
   if (nav) {
     const hit = TABS.find((x) => x.re.test(t));
     if (hit) {
-      if (hit.tab === 'admin' && ctx.profile?.role !== 'admin') return { text: `The **Admin** tab is only available to admins, and your account is a standard user.` };
+      if (hit.tab === 'admin' && ctx.profile?.role !== 'admin') return null;
       return { text: `Opening **${hit.label}**. ${hit.tip}`, action: { type: 'navigate', tab: hit.tab } };
     }
   }
@@ -178,7 +178,7 @@ export function matchAppRequest(question: string, ctx: AssistantContext, today: 
     [/\b(change|edit|update|rename)\b.*\b(my )?(name|e-?mail|username|profile)\b/, { text: `The app doesn't let you edit your name, username or email yet. If you need different details, you can create a new account with them.` }],
     [/\bremember\b.*\b(account|me|device|login)\b/, { text: `On the login screen, tick **Remember this account on this device**. Next time your username is filled in and you only type your PIN. Leave it unticked on shared computers.` }],
     [/\b(what|which) (are|is) (the )?insights?\b|\bwhat('?s| is) (on )?(the )?insights\b/, { text: `**Insights** shows your spending by category, how this month compares with last month, and suggestions for saving more.`, action: { type: 'navigate', tab: 'insights' } }],
-    [/\badmin\b/, { text: ctx.profile?.role === 'admin' ? `You're an admin. In the **Admin** tab you can see every account, make or remove admins, disable or enable accounts, reset PINs and delete accounts.` : `Admins can see all accounts, disable them, reset PINs and delete them from the **Admin** tab. The first account created on a device is the admin.` }],
+    ...(ctx.profile?.role === 'admin' ? [[/\badmin\b/, { text: `You're an admin. In the **Admin** tab you can see every account, make or remove admins, disable or enable accounts, reset PINs and delete accounts.` }] as [RegExp, { text: string }]] : []),
     [/\b(what is this (app|website|site|tool)|what does this (app|do)|how does this (app )?work|how (do|can) i use (this|the app)|features|tutorial|getting started|guide me|what is expense tracker)\b/, { text: `This is a personal expense tracker. You can:\n• record income and expenses (the form, **AI Entry**, a day at a time in **Daily Log**, or CSV import)\n• set monthly and per-category **budgets**\n• track **savings goals**\n• see **Insights** and compare months\n• switch **currency** (amounts convert at live rates) and **dark mode**\n• ask me about any of it. 😊` }],
   ];
   for (const [re, reply] of kb) if (re.test(t)) return reply;

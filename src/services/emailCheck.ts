@@ -104,3 +104,12 @@ export async function checkEmailIsReal(
     return { ok: true, unverified: true };
   }
 }
+
+/** One mailbox, one form: lowercases, and for Gmail ignores dots and "+tags" (a.b+x@gmail.com == ab@gmail.com). */
+export function canonicalEmail(email: string): string {
+  const [local = '', domain = ''] = email.trim().toLowerCase().split('@');
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return `${local.split('+')[0].replace(/\./g, '')}@gmail.com`;
+  }
+  return `${local}@${domain}`;
+}

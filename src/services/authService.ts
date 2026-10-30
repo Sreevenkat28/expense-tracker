@@ -1,6 +1,7 @@
 import { UserProfile, UserRole } from '../types/auth';
 import { storageService } from './storage';
-import { isValidEmail } from './emailCheck';
+import { isValidEmail, canonicalEmail } from './emailCheck';
+import { isAdminEmail } from '../config/admin';
 
 export { isValidEmail };
 
@@ -20,11 +21,13 @@ export const authService = {
     try {
       const data = localStorage.getItem(USERS_STORAGE_KEY);
       const users: UserProfile[] = data ? JSON.parse(data) : [];
-      // Every device with accounts needs one admin; promote the oldest account if none exists
-      // (covers accounts created before roles existed, and the last admin being deleted).
+      // If the device has no admin, restore one, but only for an account whose email is on the admin list.
       if (users.length > 0 && !users.some((u) => u.role === 'admin')) {
-        users[0] = { ...users[0], role: 'admin' };
-        this.saveUsers(users);
+        const idx = users.findIndex((u) => isAdminEmail(u.email));
+        if (idx >= 0) {
+          users[idx] = { ...users[idx], role: 'admin' };
+          this.saveUsers(users);
+        }
       }
       return users;
     } catch {
@@ -98,8 +101,8 @@ export const authService = {
     if (users.some((u) => u.username === cleanUsername)) {
       return { success: false, error: 'Username already exists. Please choose another or log in.' };
     }
-    if (users.some((u) => u.email?.toLowerCase() === cleanEmail)) {
-      return { success: false, error: 'An account with this email already exists. Please log in instead.' };
+    if (users.some((u) => u.email && canonicalEmail(u.email) === canonicalEmail(cleanEmail))) {
+      return { success: false, error: 'This email is already used by another account. Please log in instead, or use a different email.' };
     }
 
     if (dryRun) {
@@ -112,7 +115,7 @@ export const authService = {
       username: cleanUsername,
       email: cleanEmail,
       pin: cleanPin,
-      role: users.length === 0 ? 'admin' : 'user',
+      role: isAdminEmail(cleanEmail) ? 'admin' : 'user',
       currency,
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),

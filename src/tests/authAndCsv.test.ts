@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { authService, isValidEmail } from '../services/authService';
+import { ADMIN_EMAILS } from '../config/admin';
 import { storageService } from '../services/storage';
 import {
   parseTransactionsCSV,
@@ -36,12 +37,22 @@ describe('Accounts: email, sign out, delete, PIN reset, admin', () => {
     expect(authService.register('A', 'alice', 'a@x.com', '1234').success).toBe(true);
     const dup = authService.register('B', 'bob', 'A@X.com', '1234');
     expect(dup.success).toBe(false);
-    expect(dup.error).toMatch(/email already exists/);
+    expect(dup.error).toMatch(/already used/);
   });
 
-  it('logs in with username or email, and first account is admin', () => {
+  it('refuses an email already used, including Gmail dot and plus variants', () => {
+    expect(authService.register('A', 'alice', 'ab.c@gmail.com', '1234').success).toBe(true);
+    for (const e of ['AB.C@gmail.com', 'abc@gmail.com', 'a.bc+shop@gmail.com', 'abc@googlemail.com']) {
+      expect(authService.register('B', 'bob', e, '1234').error).toMatch(/already used/);
+    }
+    expect(authService.register('B', 'bob', 'other@gmail.com', '1234').success).toBe(true);
+  });
+
+  it('logs in with username or email, and only the admin email gets admin', () => {
     const reg = authService.register('Alice', 'alice', 'alice@x.com', '1234');
-    expect(reg.user?.role).toBe('admin');
+    expect(reg.user?.role).toBe('user');
+    expect(authService.register('Owner', 'owner', ADMIN_EMAILS[0].toUpperCase(), '1234').user?.role).toBe('admin');
+    authService.deleteAccount(authService.findUser('owner')!.id);
     expect(authService.register('Bob', 'bob', 'bob@x.com', '5678').user?.role).toBe('user');
     authService.logout();
     expect(authService.login('ALICE@x.com', '1234').success).toBe(true);
@@ -70,34 +81,29 @@ describe('Accounts: email, sign out, delete, PIN reset, admin', () => {
   });
 
   it('admin can disable users, and the last admin cannot be demoted', () => {
-    const alice = authService.register('Alice', 'alice', 'alice@x.com', '1234').user!;
+    const owner = authService.register('Owner', 'owner', ADMIN_EMAILS[0], '1234').user!;
     const bob = authService.register('Bob', 'bob', 'bob@x.com', '5678').user!;
-    expect(authService.adminSetRole(alice.id, 'user').success).toBe(false);
+    expect(authService.adminSetRole(owner.id, 'user').success).toBe(false);
     authService.adminSetDisabled(bob.id, true);
     expect(authService.login('bob', '5678').error).toMatch(/disabled/);
     authService.adminSetDisabled(bob.id, false);
     expect(authService.login('bob', '5678').success).toBe(true);
   });
 
-  it('keeps an admin available when the admin account is deleted', () => {
-    const alice = authService.register('Alice', 'alice', 'alice@x.com', '1234').user!; // first account = admin
-    const bob = authService.register('Bob', 'bob', 'bob@x.com', '5678').user!;
-    const carol = authService.register('Carol', 'carol', 'carol@x.com', '9999').user!;
-    expect(authService.getUsers().map((u) => u.role)).toEqual(['admin', 'user', 'user']);
+  it('never makes an ordinary account an admin, even when the device has none', () => {
+    const alice = authService.register('Alice', 'alice', 'alice@x.com', '1234').user!;
+    authService.register('Bob', 'bob', 'bob@x.com', '5678');
+    expect(authService.getUsers().map((u) => u.role)).toEqual(['user', 'user']);
     authService.deleteAccount(alice.id);
-    // the oldest remaining account is promoted so the app is never without an admin
-    expect(authService.getUsers().map((u) => [u.id, u.role])).toEqual([[bob.id, 'admin'], [carol.id, 'user']]);
-    // admins can appoint more admins, and the last one cannot be demoted
-    expect(authService.adminSetRole(carol.id, 'admin').success).toBe(true);
-    expect(authService.adminSetRole(bob.id, 'user').success).toBe(true);
-    expect(authService.adminSetRole(carol.id, 'user').success).toBe(false);
+    expect(authService.getUsers().some((u) => u.role === 'admin')).toBe(false);
   });
 
-  it('promotes the oldest account to admin for accounts created before roles existed', () => {
+  it('restores admin only for an account on the admin email list', () => {
     localStorage.setItem('expense_tracker_profiles_v1', JSON.stringify([
-      { id: 'u1', name: 'Old', username: 'old', pin: '1234', createdAt: '2026-01-01' },
+      { id: 'u1', name: 'Old', username: 'old', pin: '1234', email: 'old@x.com', createdAt: '2026-01-01' },
+      { id: 'u2', name: 'Me', username: 'me', pin: '1234', email: ADMIN_EMAILS[0], createdAt: '2026-02-01' },
     ]));
-    expect(authService.getUsers()[0].role).toBe('admin');
+    expect(authService.getUsers().map((u) => u.role)).toEqual([undefined, 'admin']);
   });
 });
 

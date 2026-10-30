@@ -36,9 +36,7 @@ export const AdminView: React.FC = () => {
   }, [version]);
 
   if (!isAdmin || !currentUser) {
-    return (
-      <div className="p-6 text-sm text-slate-600 dark:text-slate-300">Only admins can view this page.</div>
-    );
+    return null;
   }
 
   const changed = (n: Notice) => {

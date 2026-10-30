@@ -115,10 +115,12 @@ export const Header: React.FC = () => {
                               <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                               <span className="break-all">{currentUser.email ?? 'No email on file'}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>{currentUser.role === 'admin' ? 'Admin' : 'Standard user'}</span>
-                            </div>
+                            {currentUser.role === 'admin' && (
+                              <div className="flex items-center gap-2">
+                                <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>Admin</span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-2">
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                               <span>Member since {formatDate(currentUser.createdAt.slice(0, 10))}</span>

@@ -21,6 +21,7 @@ import { DailyLogView } from './components/daily/DailyLogView';
 const MainLayout: React.FC = () => {
   const {
     activeTab,
+    isAdmin,
     isQuickAddOpen,
     setIsQuickAddOpen,
     isSmartEntryOpen,
@@ -63,7 +64,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'savings' && <SavingsGoalsView />}
         {activeTab === 'insights' && <InsightsView />}
         {activeTab === 'ai' && <AIAssistantView />}
-        {activeTab === 'admin' && <AdminView />}
+        {activeTab === 'admin' && isAdmin && <AdminView />}
       </main>
 
       {/* Add / Edit Transaction Modal */}

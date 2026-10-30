@@ -38,7 +38,6 @@ describe('Assistant: profile questions', () => {
   });
 
   it('tells standard users and guests the truth', () => {
-    expect(ask('am i an admin', { profile: { ...baseCtx().profile!, role: 'user' } }).text).toContain('standard user');
     const guest = ask('what is my name', { profile: { name: 'Guest', username: '', isGuest: true } });
     expect(guest.text).toContain('guest ledger');
     expect(ask('what currency am I using').text).toContain('**USD**');
@@ -76,7 +75,12 @@ describe('Assistant: doing things in the app', () => {
     expect(ask('take me to insights').action).toEqual({ type: 'navigate', tab: 'insights' });
     expect(ask('open transactions').action).toEqual({ type: 'navigate', tab: 'transactions' });
     expect(ask('open the admin tab').action).toEqual({ type: 'navigate', tab: 'admin' });
-    expect(ask('open the admin tab', { profile: { ...baseCtx().profile!, role: 'user' } }).text).toContain('only available to admins');
+    const std = { profile: { ...baseCtx().profile!, role: 'user' as const } };
+    for (const q of ['open the admin tab', 'what is the admin tab', 'am i an admin']) {
+      const r = ask(q, std);
+      expect(r.action).toBeUndefined();
+      expect(r.text).not.toMatch(/only available to admins|standard user|admins can|\*\*admin\*\*/i);
+    }
   });
 
   it('switches currency and theme', () => {

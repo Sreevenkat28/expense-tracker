@@ -225,7 +225,7 @@ const pickBy = (seed: string, options: string[]) => {
 };
 
 const HELP_TEXT = (examples: string[]) =>
-  `I can help with anything inside this app:\n\n• **Your money:** spending, income, budget, savings goals and trends, from your real transactions\n• **Your account:** *"What's my name?"*, *"Am I an admin?"*\n• **Quick maths:** *"What's 15% of 2000?"*, *"Split 1200 between 4"*\n• **Doing things:** *"Add an expense"*, *"Open my budgets"*, *"Switch to rupees"*, *"Turn on dark mode"*\n• **How-to help:** exporting, importing, resetting your PIN and more\n\nTry asking:\n\n${examples.map((e) => `• *"${e}"*`).join('\n')}\n\nI can only help with things related to this app.`;
+  `I can help with anything inside this app:\n\n• **Your money:** spending, income, budget, savings goals and trends, from your real transactions\n• **Your account:** *"What's my name?"*\n• **Quick maths:** *"What's 15% of 2000?"*, *"Split 1200 between 4"*\n• **Doing things:** *"Add an expense"*, *"Open my budgets"*, *"Switch to rupees"*, *"Turn on dark mode"*\n• **How-to help:** exporting, importing, resetting your PIN and more\n\nTry asking:\n\n${examples.map((e) => `• *"${e}"*`).join('\n')}\n\nI can only help with things related to this app.`;
 
 /** A natural reply to greetings and chit-chat, or null when the message is about the user's money. */
 export function smallTalk(question: string, today: string): string | null {
