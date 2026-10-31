@@ -252,6 +252,12 @@ function json_(obj) {
 }
 
 /** Run this once from the editor (Run button) to grant permission to send email. */
+/** Run this once from the editor: it makes Google ask you to allow Drive access (where accounts are stored). */
+function connectDrive() {
+  DriveApp.getRootFolder();
+  Logger.log('Drive access is allowed. Now deploy a new version.');
+}
+
 function authorizeOnce() {
   DriveApp.getRootFolder(); // also asks for Drive access, where accounts are stored
   MailApp.sendEmail(Session.getActiveUser().getEmail(), APP_NAME + ' mailer is ready', 'Permission granted. You can deploy the web app now.');
