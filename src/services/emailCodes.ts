@@ -17,7 +17,7 @@ export function maskEmail(email: string): string {
   return `${name.slice(0, 1)}${'*'.repeat(Math.max(1, Math.min(name.length - 1, 5)))}@${domain}`;
 }
 
-export type ChallengePurpose = 'reset';
+export type ChallengePurpose = 'reset' | 'signup';
 
 interface Challenge {
   purpose: ChallengePurpose;
@@ -87,7 +87,7 @@ export async function startChallenge(
     return { ok: false, error: `Please wait ${wait}s before requesting another code.` };
   }
 
-  const reply = await callMailer({ action: 'send', email: params.email, name: params.name }, fetchImpl);
+  const reply = await callMailer({ action: 'send', email: params.email, name: params.name, purpose: params.purpose }, fetchImpl);
   if (!reply.ok) return { ok: false, error: reply.error ?? 'The email could not be sent.' };
 
   writeChallenge({ purpose: params.purpose, subject: params.subject, email: params.email, sentAt: Date.now() });

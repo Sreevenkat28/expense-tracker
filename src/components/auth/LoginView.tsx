@@ -17,6 +17,8 @@ import { useExpense } from '../../context/ExpenseContext';
 import { authService } from '../../services/authService';
 import { checkEmailIsReal, emailFormatError } from '../../services/emailCheck';
 import { ResetPinForm } from './ResetPinForm';
+import { VerifyEmailForm } from './VerifyEmailForm';
+import { sendSignupCode } from '../../services/signupVerify';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 interface LoginViewProps {
@@ -62,6 +64,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   };
   const [regPin, setRegPin] = useState('');
   const [regCurrency, setRegCurrency] = useState('USD');
+  // Details waiting for the emailed code before the account is really created
+  const [pendingSignup, setPendingSignup] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -72,6 +76,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
 
   const switchMode = (next: 'login' | 'register' | 'forgot') => {
     setMode(next);
+    setPendingSignup(false);
     setNotice(null);
     setErrorMsg(null);
   };
@@ -122,8 +127,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       return;
     }
 
+    // Prove the mailbox is theirs: email a random code, create the account only after it is entered
+    setBusy(true);
+    const sent = await sendSignupCode(regEmail, regName);
+    setBusy(false);
+    if (!sent.ok) {
+      setErrorMsg(sent.notConfigured ? 'Email verification is not set up yet, so new accounts cannot be created right now.' : sent.error ?? 'Could not send the verification email.');
+      return;
+    }
+    setPendingSignup(true);
+  };
+
+  const finishRegistration = () => {
     const res = register(regName, regUsername, regEmail, regPin, regCurrency);
     if (!res.success) {
+      setPendingSignup(false);
       setErrorMsg(res.error || 'Could not create account.');
       return;
     }
@@ -197,7 +215,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         )}
 
         {/* ── Log In Form ──────────────────────────────────────────────── */}
-        {mode === 'login' ? (
+        {pendingSignup ? (
+          <VerifyEmailForm
+            email={regEmail}
+            name={regName}
+            onVerified={finishRegistration}
+            onBack={() => setPendingSignup(false)}
+          />
+        ) : mode === 'login' ? (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             {rememberedUser && loginUsername === rememberedUser.username && (
               <div className="flex items-center justify-between gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300">
@@ -448,7 +473,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               className="w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{busy ? 'Please wait…' : 'Create My Personal Account'}</span>
+              <span>{busy ? 'Please wait…' : 'Email Me a Verification Code'}</span>
             </button>
           </form>
         )}

@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { EMAIL_SERVICE } from '../config/emailConfig';
 import { startChallenge, verifyChallenge, maskEmail } from '../services/emailCodes';
 import { authService } from '../services/authService';
+import { sendSignupCode, verifySignupCode } from '../services/signupVerify';
 import { requestPinReset, completePinReset } from '../services/pinReset';
 
 class MemoryStorage {
@@ -195,5 +196,24 @@ describe('Reset PIN by email', () => {
     expect((await requestPinReset('old', m.fetchImpl)).error).toMatch(/no email on file/);
     expect((await completePinReset('old', '123456', '12', m.fetchImpl)).ok).toBe(false);
     expect(m.sent).toHaveLength(0);
+  });
+});
+
+describe('Sign-up email verification', () => {
+  it('emails a verification code and accepts only that code for that address', async () => {
+    const m = loadMailer();
+    expect((await sendSignupCode('New.User@gmail.com', 'New', m.fetchImpl)).ok).toBe(true);
+    expect(m.sent[0].subject).toMatch(/verification code/);
+    expect(m.sent[0].body).not.toMatch(/reset/i);
+
+    const wrong = m.sent[0].code === '000000' ? '111111' : '000000';
+    expect((await verifySignupCode('new.user@gmail.com', wrong, m.fetchImpl)).ok).toBe(false);
+    expect((await verifySignupCode('new.user@gmail.com', m.sent[0].code, m.fetchImpl)).ok).toBe(true);
+    expect((await verifySignupCode('new.user@gmail.com', m.sent[0].code, m.fetchImpl)).ok).toBe(false); // single use
+  });
+
+  it('refuses to verify without a code having been sent from this browser', async () => {
+    const m = loadMailer();
+    expect((await verifySignupCode('x@gmail.com', '123456', m.fetchImpl)).error).toMatch(/No code is pending/);
   });
 });

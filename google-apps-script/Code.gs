@@ -48,7 +48,7 @@ function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    if (body.action === 'send') return handleSend_(email, body.name);
+    if (body.action === 'send') return handleSend_(email, body.name, body.purpose);
     if (body.action === 'verify') return handleVerify_(email, String(body.code || ''));
     return json_({ ok: false, error: 'Unknown action.' });
   } finally {
@@ -56,7 +56,7 @@ function doPost(e) {
   }
 }
 
-function handleSend_(email, name) {
+function handleSend_(email, name, purpose) {
   var cache = CacheService.getScriptCache();
 
   if (cache.get('cool:' + email)) {
@@ -75,17 +75,19 @@ function handleSend_(email, name) {
 
   var code = randomCode_();
   var salt = Utilities.getUuid();
+  var signup = purpose === 'signup';
   var safeName = String(name || 'there').replace(/[\r\n<>]/g, ' ').trim().slice(0, 40) || 'there';
 
   try {
     MailApp.sendEmail({
       to: email,
       name: APP_NAME,
-      subject: 'Your ' + APP_NAME + ' PIN reset code: ' + code,
+      subject: 'Your ' + APP_NAME + (signup ? ' verification code: ' : ' PIN reset code: ') + code,
       body:
         'Hi ' + safeName + ',\n\n' +
-        'Your ' + APP_NAME + ' PIN reset code is:\n\n    ' + code + '\n\n' +
-        'It expires in ' + CODE_TTL_SECONDS / 60 + ' minutes. If you did not ask to reset your PIN, ignore this email.'
+        'Your ' + APP_NAME + (signup ? ' verification code is:' : ' PIN reset code is:') + '\n\n    ' + code + '\n\n' +
+        'It expires in ' + CODE_TTL_SECONDS / 60 + ' minutes. ' +
+        (signup ? 'If you did not try to create an account, ignore this email.' : 'If you did not ask to reset your PIN, ignore this email.')
     });
   } catch (err) {
     return json_({ ok: false, error: 'The email could not be sent. Check the address and try again.' });
