@@ -86,7 +86,7 @@ export const AdminView: React.FC = () => {
           Admin: User Management
         </h2>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Manage the accounts stored in this browser. Accounts are local to this device and are not shared with other devices.
+          Accounts that have logged in on this browser. Everyone's data is also saved online so it works on any device, but only accounts used here are listed.
         </p>
       </div>
 
