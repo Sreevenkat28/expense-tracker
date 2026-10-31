@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserX, X, KeyRound, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/authService';
+import { cloudChangePin } from '../../services/cloud';
 import { useExpense } from '../../context/ExpenseContext';
 import { useEscapeKey } from '../../utils/useEscapeKey';
 
@@ -122,6 +123,7 @@ export const ChangePinModal: React.FC<ChangePinModalProps> = ({ isOpen, onClose 
     if (next !== confirm) { setError('The new PIN and its confirmation do not match.'); return; }
     const res = authService.changePin(currentUser.id, current, next);
     if (!res.success) { setError(res.error ?? 'Could not change the PIN.'); return; }
+    void cloudChangePin(currentUser.username, current.trim(), next.trim());
     refreshCurrentUser();
     setDone(true);
   };

@@ -1,4 +1,6 @@
-import { authService } from './authService';
+import { authService, isValidEmail } from './authService';
+import { canonicalEmail } from './emailCheck';
+import { cloudEnabled, cloudResetPin } from './cloud';
 import { startChallenge, verifyChallenge, clearChallenge, StartChallengeResult } from './emailCodes';
 
 /**
@@ -11,6 +13,12 @@ export async function requestPinReset(
 ): Promise<StartChallengeResult & { email?: string; name?: string }> {
   const user = authService.findUser(identifier);
   if (!user) {
+    // The account may have been made on another device: the online copy decides when the code is checked
+    const typed = identifier.trim().toLowerCase();
+    if (cloudEnabled() && isValidEmail(typed)) {
+      const result = await startChallenge({ email: typed, name: 'there', purpose: 'reset-online', subject: canonicalEmail(typed) }, fetchImpl);
+      return { ...result, email: typed };
+    }
     return { ok: false, error: 'No account found with that email. Check the spelling or create an account.' };
   }
   if (user.disabled) {
@@ -33,13 +41,22 @@ export async function completePinReset(
   fetchImpl?: typeof fetch
 ): Promise<{ ok: boolean; error?: string }> {
   const user = authService.findUser(identifier);
-  if (!user) return { ok: false, error: 'Account not found.' };
+  const typed = identifier.trim().toLowerCase();
+  if (!user && !(cloudEnabled() && isValidEmail(typed))) return { ok: false, error: 'Account not found.' };
   if (!newPin.trim() || newPin.trim().length < 4) {
     return { ok: false, error: 'PIN / Password must be at least 4 characters.' };
   }
-  const check = await verifyChallenge({ purpose: 'reset', subject: user.id }, code, fetchImpl);
+  const check = await verifyChallenge({ purpose: user ? 'reset' : 'reset-online', subject: user ? user.id : canonicalEmail(typed) }, code, fetchImpl);
   if (!check.ok) return check;
-  const res = authService.setPin(user.id, newPin);
+  // Change it online first (so every device gets the new PIN), then on this device
+  const online = await cloudResetPin(user?.email ?? typed, newPin, fetchImpl);
+  if (!online.ok && !(online.notFound && user)) {
+    return { ok: false, error: online.notFound ? 'No account found with that email. Check the spelling or create an account.' : online.error };
+  }
+  if (user) {
+    const res = authService.setPin(user.id, newPin);
+    if (!res.success) return { ok: false, error: res.error };
+  }
   clearChallenge();
-  return res.success ? { ok: true } : { ok: false, error: res.error };
+  return { ok: true };
 }

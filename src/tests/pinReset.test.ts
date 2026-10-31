@@ -6,6 +6,8 @@ import { EMAIL_SERVICE } from '../config/emailConfig';
 import { startChallenge, verifyChallenge, maskEmail } from '../services/emailCodes';
 import { authService } from '../services/authService';
 import { sendSignupCode, verifySignupCode } from '../services/signupVerify';
+import { checkAvailable, cloudLogin, cloudRegister, cloudResetPin, pushNow, pullIfNewer } from '../services/cloud';
+import { storageService } from '../services/storage';
 import { requestPinReset, completePinReset } from '../services/pinReset';
 
 class MemoryStorage {
@@ -24,6 +26,7 @@ function loadMailer() {
   const sent: { to: string; subject: string; body: string; code: string }[] = [];
   const cacheData = new Map<string, { value: string; expires: number }>();
   const props = new Map<string, string>();
+  const files = new Map<string, { content: string; trashed: boolean }>();
   const clock = { now: 1_000_000 };
 
   const sandbox: Record<string, unknown> = {
@@ -50,6 +53,18 @@ function loadMailer() {
         setProperty: (k: string, v: string) => props.set(k, v),
       }),
     },
+    DriveApp: {
+      createFile: (_name: string, content: string) => {
+        const id = `f${files.size + 1}`;
+        files.set(id, { content, trashed: false });
+        return { getId: () => id };
+      },
+      getFileById: (id: string) => ({
+        getBlob: () => ({ getDataAsString: () => files.get(id)!.content }),
+        setContent: (c: string) => { files.get(id)!.content = c; },
+        setTrashed: (v: boolean) => { files.get(id)!.trashed = v; },
+      }),
+    },
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     MailApp: {
       sendEmail: (m: { to: string; subject: string; body: string }) =>
@@ -63,8 +78,8 @@ function loadMailer() {
   };
   runInNewContext(readFileSync('google-apps-script/Code.gs', 'utf8'), sandbox);
   const doPost = sandbox.doPost as (e: unknown) => { text: string };
-  const call = (payload: Record<string, string>) =>
-    JSON.parse(doPost({ postData: { contents: JSON.stringify(payload) } }).text) as { ok: boolean; error?: string };
+  const call = (payload: Record<string, unknown>) =>
+    JSON.parse(doPost({ postData: { contents: JSON.stringify(payload) } }).text) as Record<string, any> & { ok: boolean; error?: string };
 
   // A fetch() that talks to the sandboxed script the way the browser talks to the deployed one
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) =>
@@ -215,5 +230,114 @@ describe('Sign-up email verification', () => {
   it('refuses to verify without a code having been sent from this browser', async () => {
     const m = loadMailer();
     expect((await verifySignupCode('x@gmail.com', '123456', m.fetchImpl)).error).toMatch(/No code is pending/);
+  });
+});
+
+describe('Accounts on multiple devices', () => {
+  const newDevice = () => {
+    g.localStorage = new MemoryStorage();
+    g.sessionStorage = new MemoryStorage();
+  };
+  const proveEmail = async (m: ReturnType<typeof loadMailer>, email: string) => {
+    m.advance(31_000);
+    await sendSignupCode(email, 'X', m.fetchImpl);
+    return (await verifySignupCode(email, m.sent[m.sent.length - 1].code, m.fetchImpl)).ok;
+  };
+
+  async function createOnDeviceA(m: ReturnType<typeof loadMailer>) {
+    expect((await sendSignupCode('amy@gmail.com', 'Amy', m.fetchImpl)).ok).toBe(true);
+    expect((await verifySignupCode('amy@gmail.com', m.sent[0].code, m.fetchImpl)).ok).toBe(true);
+    const user = authService.register('Amy', 'amy', 'amy@gmail.com', '4321', 'INR').user!;
+    storageService.saveData(
+      [{ id: 't1', type: 'expense', amountCents: 25000, description: 'Lunch', category: 'Food and groceries', date: '2026-10-02', createdAt: '' }] as never,
+      { monthlyBudgetCents: 0, openingBalanceCents: 100000, monthBudgets: {}, categoryBudgets: {} } as never, [], user.id);
+    expect((await cloudRegister(user, m.fetchImpl)).ok).toBe(true);
+    return user;
+  }
+
+  it('brings the account and its ledger to a new device after an email code', async () => {
+    const m = loadMailer();
+    const amy = await createOnDeviceA(m);
+
+    newDevice(); // phone: nothing stored here
+    const first = await cloudLogin('amy', '4321', false, m.fetchImpl);
+    expect(first.kind).toBe('new-device');
+    expect(await proveEmail(m, 'amy@gmail.com')).toBe(true);
+    expect((await cloudLogin('amy', '4321', true, m.fetchImpl)).kind).toBe('ok');
+
+    expect(authService.login('amy', '4321').user?.id).toBe(amy.id);
+    expect(storageService.loadData(amy.id).transactions.map((t) => t.description)).toEqual(['Lunch']);
+    expect(storageService.loadData(amy.id).budgetConfig.openingBalanceCents).toBe(100000);
+    // the device is now trusted: no code needed next time
+    expect((await cloudLogin('amy@gmail.com', '4321', false, m.fetchImpl)).kind).toBe('ok');
+  });
+
+  it('refuses a wrong PIN, and the new-device code alone is not enough', async () => {
+    const m = loadMailer();
+    await createOnDeviceA(m);
+    newDevice();
+    expect((await cloudLogin('amy', '0000', false, m.fetchImpl)).kind).toBe('error');
+    // claiming "verified" without having proved the email is refused
+    expect((await cloudLogin('amy', '4321', true, m.fetchImpl)).kind).toBe('new-device');
+    for (let i = 0; i < 8; i++) await cloudLogin('amy', '1111', false, m.fetchImpl);
+    const locked = await cloudLogin('amy', '4321', false, m.fetchImpl);
+    expect(locked.kind === 'error' && locked.error).toMatch(/Too many wrong PIN attempts/);
+  });
+
+  it('shares usernames and emails across devices', async () => {
+    const m = loadMailer();
+    await createOnDeviceA(m);
+    newDevice();
+    expect((await checkAvailable('amy', 'other@gmail.com', m.fetchImpl)).error).toMatch(/Username already exists/);
+    expect((await checkAvailable('bob', 'A.my+x@gmail.com', m.fetchImpl)).error).toMatch(/already used/);
+    expect((await checkAvailable('bob', 'bob@gmail.com', m.fetchImpl)).ok).toBe(true);
+  });
+
+  it('carries changes between devices and never overwrites newer work', async () => {
+    const m = loadMailer();
+    const amy = await createOnDeviceA(m);
+    const deviceA = g.localStorage;
+    newDevice();
+    await cloudLogin('amy', '4321', false, m.fetchImpl);
+    await proveEmail(m, 'amy@gmail.com');
+    await cloudLogin('amy', '4321', true, m.fetchImpl);
+    const deviceB = g.localStorage;
+
+    // phone adds an expense
+    const tx = storageService.loadData(amy.id);
+    storageService.saveData([...tx.transactions, { ...tx.transactions[0], id: 't2', description: 'Taxi' }], tx.budgetConfig, [], amy.id);
+    expect((await pushNow({ ...amy, pin: '4321' }, m.fetchImpl)).ok).toBe(true);
+
+    // the original device sees it
+    g.localStorage = deviceA;
+    expect(await pullIfNewer({ ...amy, pin: '4321' }, m.fetchImpl)).toBe(true);
+    expect(storageService.loadData(amy.id).transactions.map((t) => t.description)).toEqual(['Lunch', 'Taxi']);
+    expect(await pullIfNewer({ ...amy, pin: '4321' }, m.fetchImpl)).toBe(false);
+
+    // both change at once: the one who saved second gets the other's version instead of overwriting it
+    const a = storageService.loadData(amy.id);
+    storageService.saveData([...a.transactions, { ...a.transactions[0], id: 't3', description: 'Tea' }], a.budgetConfig, [], amy.id);
+    expect((await pushNow({ ...amy, pin: '4321' }, m.fetchImpl)).ok).toBe(true);
+    g.localStorage = deviceB;
+    const b = storageService.loadData(amy.id);
+    storageService.saveData([...b.transactions, { ...b.transactions[0], id: 't4', description: 'Movie' }], b.budgetConfig, [], amy.id);
+    expect((await pushNow({ ...amy, pin: '4321' }, m.fetchImpl)).conflict).toBe(true);
+    expect(storageService.loadData(amy.id).transactions.map((t) => t.description)).toEqual(['Lunch', 'Taxi', 'Tea']);
+  });
+
+  it('resets a forgotten PIN for an account made on another device', async () => {
+    const m = loadMailer();
+    await createOnDeviceA(m);
+    newDevice();
+    m.advance(31_000);
+    const asked = await requestPinReset('amy@gmail.com', m.fetchImpl);
+    expect(asked.ok).toBe(true);
+    const done = await completePinReset('amy@gmail.com', m.sent[m.sent.length - 1].code, '9999', m.fetchImpl);
+    expect(done.ok).toBe(true);
+    expect((await cloudLogin('amy', '4321', false, m.fetchImpl)).kind).toBe('error');
+    // still a new device, so the code is asked for again, but the new PIN is accepted
+    expect((await cloudLogin('amy', '9999', false, m.fetchImpl)).kind).toBe('new-device');
+    expect((await requestPinReset('nobody@gmail.com', m.fetchImpl)).ok).toBe(false);
+    expect((await cloudResetPin('nobody@gmail.com', '1234', m.fetchImpl)).notFound).toBe(true);
   });
 });

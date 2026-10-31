@@ -6,15 +6,21 @@ import { resendSignupCode, verifySignupCode } from '../../services/signupVerify'
 interface VerifyEmailFormProps {
   email: string;
   name: string;
-  onVerified: () => void;
+  /** Runs once the code is right; return an error message to keep the user on this screen. */
+  onVerified: () => Promise<string | void> | string | void;
   onBack: () => void;
+  /** What the code is for: shown in the text and on the button. */
+  intro?: string;
+  submitLabel?: string;
+  backLabel?: string;
+  onSkip?: () => void;
 }
 
 const primaryBtn =
   'w-full py-2.5 px-4 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer';
 
 /** Sign-up step 2: the user types the 6-digit code emailed to the address they gave. */
-export const VerifyEmailForm: React.FC<VerifyEmailFormProps> = ({ email, name, onVerified, onBack }) => {
+export const VerifyEmailForm: React.FC<VerifyEmailFormProps> = ({ email, name, onVerified, onBack, intro, submitLabel, backLabel, onSkip }) => {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -32,12 +38,14 @@ export const VerifyEmailForm: React.FC<VerifyEmailFormProps> = ({ email, name, o
     setError(null);
     setBusy(true);
     const res = await verifySignupCode(email, code);
-    setBusy(false);
     if (!res.ok) {
+      setBusy(false);
       setError(res.error ?? 'That code did not work.');
       return;
     }
-    onVerified();
+    const problem = await onVerified();
+    setBusy(false);
+    if (problem) setError(problem);
   };
 
   const resend = async () => {
@@ -62,7 +70,7 @@ export const VerifyEmailForm: React.FC<VerifyEmailFormProps> = ({ email, name, o
       <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
         <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
         <span>
-          We emailed a 6-digit code to <strong>{maskEmail(email)}</strong>. Enter it to confirm this is your email and finish creating your account. It expires in {CODE_TTL_MS / 60000} minutes. Check your spam folder if you do not see it.
+          We emailed a 6-digit code to <strong>{maskEmail(email)}</strong>. {intro ?? 'Enter it to confirm this is your email and finish creating your account.'} It expires in {CODE_TTL_MS / 60000} minutes. Check your spam folder if you do not see it.
         </span>
       </div>
 
@@ -88,12 +96,18 @@ export const VerifyEmailForm: React.FC<VerifyEmailFormProps> = ({ email, name, o
 
       <button type="submit" disabled={busy || code.length !== 6} className={primaryBtn}>
         <BadgeCheck className="w-4 h-4" />
-        <span>{busy ? 'Checking…' : 'Verify & Create Account'}</span>
+        <span>{busy ? 'Checking…' : submitLabel ?? 'Verify & Create Account'}</span>
       </button>
+
+      {onSkip && (
+        <button type="button" onClick={onSkip} className="w-full text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-600 cursor-pointer">
+          Skip for now (use this device only)
+        </button>
+      )}
 
       <div className="flex items-center justify-between text-xs">
         <button type="button" onClick={back} className="font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-600 inline-flex items-center gap-1 cursor-pointer">
-          <ArrowLeft className="w-3.5 h-3.5" /> Change email
+          <ArrowLeft className="w-3.5 h-3.5" /> {backLabel ?? 'Change email'}
         </button>
         <button
           type="button"

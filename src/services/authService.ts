@@ -135,6 +135,20 @@ export const authService = {
     return { success: true, user: newUser };
   },
 
+  /** Stores an account that was fetched from the online master copy (another device made it). */
+  importAccount(profile: Pick<UserProfile, 'id' | 'name' | 'username' | 'email' | 'currency' | 'createdAt'>, pin: string): UserProfile {
+    const users = this.getUsers();
+    const existing = users.find((u) => u.id === profile.id);
+    const merged: UserProfile = {
+      ...existing,
+      ...profile,
+      pin,
+      role: existing?.role ?? (isAdminEmail(profile.email) ? 'admin' : 'user'),
+    };
+    this.saveUsers(existing ? users.map((u) => (u.id === profile.id ? merged : u)) : [...users, merged]);
+    return merged;
+  },
+
   /** Verifies username/email + PIN without starting a session. */
   checkCredentials(identifier: string, pin: string): AuthResult {
     const user = this.findUser(identifier);

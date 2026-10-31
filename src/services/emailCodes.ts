@@ -17,7 +17,7 @@ export function maskEmail(email: string): string {
   return `${name.slice(0, 1)}${'*'.repeat(Math.max(1, Math.min(name.length - 1, 5)))}@${domain}`;
 }
 
-export type ChallengePurpose = 'reset' | 'signup';
+export type ChallengePurpose = 'reset' | 'reset-online' | 'signup';
 
 interface Challenge {
   purpose: ChallengePurpose;
@@ -53,9 +53,10 @@ export function resendWaitSeconds(now: number = Date.now()): number {
   return Math.max(0, Math.ceil((c.sentAt + RESEND_COOLDOWN_MS - now) / 1000));
 }
 
-type MailerReply = { ok: boolean; error?: string };
+export type MailerReply = { ok: boolean; error?: string; [key: string]: unknown };
 
-async function callMailer(payload: Record<string, string>, fetchImpl: typeof fetch): Promise<MailerReply> {
+/** Posts one JSON request to the Google Apps Script web app and returns its JSON reply. */
+export async function callMailer(payload: Record<string, unknown>, fetchImpl: typeof fetch = (...args) => fetch(...args)): Promise<MailerReply> {
   try {
     // No custom headers: this keeps it a "simple" request, which Apps Script accepts from browsers
     const res = await fetchImpl(EMAIL_SERVICE.scriptUrl, { method: 'POST', body: JSON.stringify(payload) });

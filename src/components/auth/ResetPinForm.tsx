@@ -23,6 +23,7 @@ export const ResetPinForm: React.FC<ResetPinFormProps> = ({ onBack, onDone }) =>
   const [code, setCode] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -164,7 +165,7 @@ export const ResetPinForm: React.FC<ResetPinFormProps> = ({ onBack, onDone }) =>
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <KeyRound className="w-4 h-4" />
             </div>
-            <input type="password" autoComplete="new-password" value={pin} onChange={(e) => setPin(e.target.value)} className={inputCls} />
+            <input type={showPin ? 'text' : 'password'} autoComplete="new-password" value={pin} onChange={(e) => setPin(e.target.value)} className={inputCls} />
           </div>
         </div>
         <div>
@@ -173,10 +174,16 @@ export const ResetPinForm: React.FC<ResetPinFormProps> = ({ onBack, onDone }) =>
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <KeyRound className="w-4 h-4" />
             </div>
-            <input type="password" autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} className={inputCls} />
+            <input type={showPin ? 'text' : 'password'} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} className={inputCls} />
           </div>
         </div>
       </div>
+
+
+      <label className="-mt-1 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+        <input type="checkbox" checked={showPin} onChange={(e) => setShowPin(e.target.checked)} className="accent-emerald-600" />
+        <span>Show password</span>
+      </label>
 
       {errorBox}
       {info && !error && <p className="text-xs text-emerald-700 dark:text-emerald-400 text-center m-0">{info}</p>}

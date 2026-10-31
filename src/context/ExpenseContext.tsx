@@ -1,3 +1,4 @@
+import { cloudDelete, pullIfNewer, schedulePush } from '../services/cloud';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Transaction,
@@ -58,7 +59,7 @@ interface ExpenseContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (identifier: string, pin: string) => { success: boolean; error?: string };
-  register: (name: string, username: string, email: string, pin: string, currency?: string) => { success: boolean; error?: string };
+  register: (name: string, username: string, email: string, pin: string, currency?: string) => { success: boolean; error?: string; user?: UserProfile };
   logout: () => void;
   continueAsGuest: () => void;
   deleteAccount: () => void;
@@ -182,8 +183,22 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setCurrencyState(currency);
       setData(loadLedger(result.user.id, currency));
     }
-    return { success: result.success, error: result.error };
+    return { success: result.success, error: result.error, user: result.user };
   }, []);
+
+  // Another device saved newer changes: they have just been written into this browser, so reload to show them
+  const reloadForRemoteChanges = useCallback(() => { window.location.reload(); }, []);
+
+  // Pick up changes made on other devices when the app opens or the tab is brought back
+  useEffect(() => {
+    if (!currentUser) return;
+    const check = () => {
+      if (document.visibilityState === 'visible') void pullIfNewer(currentUser).then((changed) => { if (changed) reloadForRemoteChanges(); });
+    };
+    check();
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
+  }, [currentUser, reloadForRemoteChanges]);
 
   const logout = useCallback(() => {
     authService.logout();
@@ -241,7 +256,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Remember the choice for this account so it survives reloads and the next log in
     if (currentUser) {
       const updated = authService.setCurrency(currentUser.id, code);
-      if (updated) setCurrentUser(updated);
+      if (updated) {
+        setCurrentUser(updated);
+        schedulePush(updated, reloadForRemoteChanges);
+      }
     }
   }, [currentUser]);
 
@@ -329,6 +347,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     newGoals: SavingsGoal[]
   ) => {
     storageService.saveData(newTx, newConfig, newGoals, currentUser?.id ?? null);
+    schedulePush(currentUser, reloadForRemoteChanges);
     setData({ transactions: newTx, budgetConfig: newConfig, savingsGoals: newGoals, isSampleData: false });
   }, [currentUser]);
 
@@ -437,6 +456,7 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // ─── Reset ────────────────────────────────────────────────────────────────────
   const resetToCleanAccount = useCallback((openingBalanceCents: number = 0, defaultBudgetCents: number = 0) => {
     const freshClean = storageService.resetToCleanAccount(openingBalanceCents, defaultBudgetCents, currentUser?.id ?? null);
+    schedulePush(currentUser, reloadForRemoteChanges);
     setData({ ...freshClean, budgetConfig: { ...freshClean.budgetConfig, currency } });
     setSelectedMonth(getCurrentYearMonth());
     setSelectedDate(null);
@@ -446,8 +466,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Permanently wipes the signed-in account (or the guest ledger) from this device, then signs out
   const deleteAccount = useCallback(() => {
-    if (currentUser) authService.deleteAccount(currentUser.id);
-    else storageService.clearData(null);
+    if (currentUser) {
+      void cloudDelete(currentUser);
+      authService.deleteAccount(currentUser.id);
+    } else storageService.clearData(null);
     logout();
   }, [currentUser, logout]);
 

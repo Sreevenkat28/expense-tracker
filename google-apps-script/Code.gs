@@ -4,6 +4,7 @@
  * The app calls this web app two ways (POST, JSON body):
  *   { action: 'send',   email, name }   -> emails a random 6-digit code to `email`
  *   { action: 'verify', email, code }   -> checks the code; { ok: true } if correct
+ *   { action: 'acct_*', ... }            -> accounts that work on every device (see the Accounts section)
  *   { action: 'chat', question, history, facts, summary, clientId }
  *                                       -> asks an AI model (key kept in Script Properties) and returns { ok, text }
  * The code is generated, stored (hashed) and checked here, so the browser never sees it.
@@ -13,6 +14,7 @@
 var APP_NAME = 'Expense Tracker';
 var CODE_TTL_SECONDS = 600; // 10 minutes
 var MAX_ATTEMPTS = 5;
+var VERIFIED_TTL_SECONDS = 900; // after a correct code, the email stays "proved" this long
 var RESEND_COOLDOWN_SECONDS = 30;
 var MAX_SENDS_PER_EMAIL_PER_HOUR = 3;
 var MAX_SENDS_PER_DAY = 80; // Gmail allows about 100 script emails/day on a normal account
@@ -39,6 +41,7 @@ function doPost(e) {
   }
 
   if (body.action === 'chat') return handleChat_(body);
+  if (String(body.action).indexOf('acct_') === 0) return handleAccount_(body);
 
   var email = String(body.email || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
@@ -59,6 +62,11 @@ function doPost(e) {
 function handleSend_(email, name, purpose) {
   var cache = CacheService.getScriptCache();
 
+  // Reset codes for accounts made on another device go only to emails that have an online account
+  if (purpose === 'reset-online' && !loadIndex_().data.emails[canonEmail_(email)]) {
+    return json_({ ok: false, error: 'No account found with that email. Check the spelling or create an account.' });
+  }
+
   if (cache.get('cool:' + email)) {
     return json_({ ok: false, error: 'Please wait ' + RESEND_COOLDOWN_SECONDS + ' seconds before requesting another code.' });
   }
@@ -75,7 +83,7 @@ function handleSend_(email, name, purpose) {
 
   var code = randomCode_();
   var salt = Utilities.getUuid();
-  var signup = purpose === 'signup';
+  var signup = purpose === 'signup' || purpose === 'device';
   var safeName = String(name || 'there').replace(/[\r\n<>]/g, ' ').trim().slice(0, 40) || 'there';
 
   try {
@@ -125,6 +133,7 @@ function handleVerify_(email, rawCode) {
   }
 
   cache.remove('code:' + email); // single use
+  cache.put('ok:' + email, '1', VERIFIED_TTL_SECONDS); // lets one sign-up / new-device log in / PIN reset go through
   return json_({ ok: true });
 }
 
@@ -244,5 +253,209 @@ function json_(obj) {
 
 /** Run this once from the editor (Run button) to grant permission to send email. */
 function authorizeOnce() {
+  DriveApp.getRootFolder(); // also asks for Drive access, where accounts are stored
   MailApp.sendEmail(Session.getActiveUser().getEmail(), APP_NAME + ' mailer is ready', 'Permission granted. You can deploy the web app now.');
+}
+
+// ─── Accounts that work on every device ──────────────────────────────────────
+//
+// Accounts and ledgers are kept as small JSON files in the Drive of the Google account that owns this script:
+// one index file (username/email -> user id -> file id) and one file per user. PINs are stored salted+hashed.
+// Every call carries the username/email and PIN, and the script checks them, so there are no session tokens.
+//   acct_available {username,email}                      -> is this username/email free?
+//   acct_register  {profile,pin,deviceId,ledger?}         -> create (needs the email code verified just before)
+//   acct_login     {identifier,pin,deviceId,verified?}    -> profile+ledger; asks for an email code on a new device
+//   acct_push      {identifier,pin,deviceId,ledger,base}  -> save the ledger (rejects if another device saved newer)
+//   acct_pull      {identifier,pin,deviceId,since}        -> the ledger, if newer than `since`
+//   acct_change_pin {identifier,pin,newPin} | acct_reset_pin {email,newPin} (needs email code) | acct_delete {identifier,pin}
+
+var LOGIN_FAIL_LIMIT = 8;
+var LOGIN_FAIL_WINDOW_SECONDS = 900;
+var MAX_LEDGER_CHARS = 900000;
+var MAX_DEVICES = 20;
+
+function canonEmail_(email) {
+  var parts = String(email || '').trim().toLowerCase().split('@');
+  var local = parts[0] || '', domain = parts[1] || '';
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return local.split('+')[0].replace(/\./g, '') + '@gmail.com';
+  return local + '@' + domain;
+}
+
+function readJson_(fileId) { return JSON.parse(DriveApp.getFileById(fileId).getBlob().getDataAsString()); }
+function writeJson_(fileId, obj) { DriveApp.getFileById(fileId).setContent(JSON.stringify(obj)); }
+
+function loadIndex_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('ACCOUNT_INDEX_FILE');
+  if (!id) {
+    id = DriveApp.createFile('expense-tracker-index.json', JSON.stringify({ users: {}, emails: {}, files: {} })).getId();
+    props.setProperty('ACCOUNT_INDEX_FILE', id);
+  }
+  return { id: id, data: readJson_(id) };
+}
+
+function findAccountId_(index, identifier) {
+  var raw = String(identifier || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw.indexOf('@') >= 0) return index.data.emails[canonEmail_(raw)] || null;
+  return index.data.users[raw] || null;
+}
+
+function pinHash_(salt, pin) { return hash_(salt, String(pin)); }
+
+function accountError_(msg, extra) {
+  var r = { ok: false, error: msg };
+  for (var k in (extra || {})) r[k] = extra[k];
+  return json_(r);
+}
+
+function publicProfile_(a) {
+  return { id: a.id, name: a.name, username: a.username, email: a.email, currency: a.currency, createdAt: a.createdAt };
+}
+
+/** Looks up the account and checks the PIN, throttling repeated wrong guesses. Returns {acct, fileId} or {response}. */
+function authenticate_(index, body) {
+  var cache = CacheService.getScriptCache();
+  var id = findAccountId_(index, body.identifier);
+  if (!id) return { response: accountError_('Account not found. Check your username / email, or create an account.', { notFound: true }) };
+  var fails = Number(cache.get('fail:' + id) || 0);
+  if (fails >= LOGIN_FAIL_LIMIT) return { response: accountError_('Too many wrong PIN attempts. Try again in 15 minutes, or reset your PIN by email.') };
+  var fileId = index.data.files[id];
+  var acct = readJson_(fileId);
+  if (acct.pinHash !== pinHash_(acct.pinSalt, body.pin)) {
+    cache.put('fail:' + id, String(fails + 1), LOGIN_FAIL_WINDOW_SECONDS);
+    return { response: accountError_('Incorrect PIN / Password.') };
+  }
+  cache.remove('fail:' + id);
+  return { acct: acct, fileId: fileId };
+}
+
+function takeVerified_(email) {
+  var cache = CacheService.getScriptCache();
+  var key = 'ok:' + String(email || '').trim().toLowerCase();
+  if (!cache.get(key)) return false;
+  cache.remove(key);
+  return true;
+}
+
+function newPinRecord_(pin) {
+  var salt = Utilities.getUuid();
+  return { pinSalt: salt, pinHash: pinHash_(salt, pin) };
+}
+
+function ledgerOk_(ledger) {
+  return ledger && Array.isArray(ledger.transactions) && ledger.budgetConfig && typeof ledger.budgetConfig === 'object' &&
+    Array.isArray(ledger.savingsGoals) && JSON.stringify(ledger).length <= MAX_LEDGER_CHARS;
+}
+
+function handleAccount_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var action = body.action;
+    var index = loadIndex_();
+    var pin = String(body.pin == null ? '' : body.pin);
+
+    if (action === 'acct_available') {
+      var u = String(body.username || '').trim().toLowerCase();
+      if (u && index.data.users[u]) return accountError_('Username already exists. Please choose another or log in.');
+      if (body.email && index.data.emails[canonEmail_(body.email)]) return accountError_('This email is already used by another account. Please log in instead, or use a different email.');
+      return json_({ ok: true });
+    }
+
+    if (action === 'acct_register') {
+      var p = body.profile || {};
+      var username = String(p.username || '').trim().toLowerCase();
+      var email = String(p.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || username.length < 3 || pin.length < 4 || !p.id || !/^[\w-]{3,60}$/.test(String(p.id))) {
+        return accountError_('Those account details are not valid.');
+      }
+      if (index.data.users[username]) return accountError_('Username already exists. Please choose another or log in.');
+      if (index.data.emails[canonEmail_(email)]) return accountError_('This email is already used by another account. Please log in instead, or use a different email.');
+      if (!takeVerified_(email)) return accountError_('Please verify your email with the code first.', { needsCode: true });
+      var ledger = body.ledger && ledgerOk_(body.ledger) ? body.ledger : null;
+      var rec = newPinRecord_(pin);
+      var acct = {
+        id: String(p.id), name: String(p.name || '').slice(0, 80), username: username, email: email,
+        currency: String(p.currency || 'USD').slice(0, 8), createdAt: String(p.createdAt || new Date().toISOString()),
+        pinSalt: rec.pinSalt, pinHash: rec.pinHash, devices: body.deviceId ? [String(body.deviceId).slice(0, 64)] : [],
+        ledger: ledger, updatedAt: ledger ? Date.now() : 0
+      };
+      var fileId = DriveApp.createFile('expense-tracker-' + acct.id + '.json', JSON.stringify(acct)).getId();
+      index.data.users[username] = acct.id;
+      index.data.emails[canonEmail_(email)] = acct.id;
+      index.data.files[acct.id] = fileId;
+      writeJson_(index.id, index.data);
+      return json_({ ok: true, updatedAt: acct.updatedAt });
+    }
+
+    if (action === 'acct_reset_pin') {
+      var rid = findAccountId_(index, body.email);
+      if (!rid) return accountError_('No account found with that email.', { notFound: true });
+      if (String(body.newPin || '').length < 4) return accountError_('PIN / Password must be at least 4 characters.');
+      var racct = readJson_(index.data.files[rid]);
+      if (!(takeVerified_(body.email) || takeVerified_(racct.email))) return accountError_('Please verify your email with the code first.', { needsCode: true });
+      var rr = newPinRecord_(String(body.newPin));
+      racct.pinSalt = rr.pinSalt; racct.pinHash = rr.pinHash;
+      writeJson_(index.data.files[rid], racct);
+      CacheService.getScriptCache().remove('fail:' + rid);
+      return json_({ ok: true });
+    }
+
+    var auth = authenticate_(index, body);
+    if (auth.response) return auth.response;
+    var a = auth.acct, deviceId = String(body.deviceId || '').slice(0, 64);
+
+    if (action === 'acct_change_pin') {
+      var np = String(body.newPin || '');
+      if (np.length < 4) return accountError_('PIN / Password must be at least 4 characters.');
+      var nr = newPinRecord_(np);
+      a.pinSalt = nr.pinSalt; a.pinHash = nr.pinHash;
+      writeJson_(auth.fileId, a);
+      return json_({ ok: true });
+    }
+
+    if (action === 'acct_delete') {
+      DriveApp.getFileById(auth.fileId).setTrashed(true);
+      delete index.data.users[a.username];
+      delete index.data.emails[canonEmail_(a.email)];
+      delete index.data.files[a.id];
+      writeJson_(index.id, index.data);
+      return json_({ ok: true });
+    }
+
+    // Everything below needs a device that has proved it can read the account's email
+    var trusted = deviceId && a.devices.indexOf(deviceId) >= 0;
+    if (!trusted) {
+      if (action === 'acct_login' && deviceId && body.verified === true && takeVerified_(a.email)) {
+        a.devices.push(deviceId);
+        if (a.devices.length > MAX_DEVICES) a.devices = a.devices.slice(-MAX_DEVICES);
+        writeJson_(auth.fileId, a);
+      } else {
+        return accountError_('This looks like a new device. Enter the code we email you to continue.', { needsDeviceCode: true, email: a.email, name: a.name });
+      }
+    }
+
+    if (action === 'acct_login') {
+      return json_({ ok: true, profile: publicProfile_(a), ledger: a.ledger, updatedAt: a.updatedAt });
+    }
+    if (action === 'acct_pull') {
+      var since = Number(body.since || 0);
+      return json_(a.updatedAt > since ? { ok: true, changed: true, ledger: a.ledger, updatedAt: a.updatedAt, profile: publicProfile_(a) } : { ok: true, changed: false, updatedAt: a.updatedAt });
+    }
+    if (action === 'acct_push') {
+      if (!ledgerOk_(body.ledger)) return accountError_('That ledger is too large or not valid.');
+      if (a.updatedAt > Number(body.base || 0)) {
+        return json_({ ok: false, conflict: true, ledger: a.ledger, updatedAt: a.updatedAt, profile: publicProfile_(a), error: 'Another device saved newer changes.' });
+      }
+      a.ledger = body.ledger;
+      if (body.currency) a.currency = String(body.currency).slice(0, 8);
+      a.updatedAt = Math.max(Date.now(), a.updatedAt + 1);
+      writeJson_(auth.fileId, a);
+      return json_({ ok: true, updatedAt: a.updatedAt });
+    }
+    return accountError_('Unknown action.');
+  } finally {
+    lock.releaseLock();
+  }
 }

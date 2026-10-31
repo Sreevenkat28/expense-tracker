@@ -19,6 +19,7 @@ import { checkEmailIsReal, emailFormatError } from '../../services/emailCheck';
 import { ResetPinForm } from './ResetPinForm';
 import { VerifyEmailForm } from './VerifyEmailForm';
 import { sendSignupCode } from '../../services/signupVerify';
+import { checkAvailable, cloudEnabled, cloudLogin, cloudRegister } from '../../services/cloud';
 import { SUPPORTED_CURRENCIES } from '../../utils/currency';
 
 interface LoginViewProps {
@@ -26,7 +27,7 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
-  const { login, register, continueAsGuest } = useExpense();
+  const { login, register, logout, continueAsGuest } = useExpense();
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
 
@@ -35,6 +36,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [rememberedUser, setRememberedUser] = useState(() => authService.getRememberedUser());
   const [loginUsername, setLoginUsername] = useState(() => authService.getRememberedUser()?.username ?? '');
   const [loginPin, setLoginPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
 
   // Register form state
   const [regName, setRegName] = useState('');
@@ -66,6 +68,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [regCurrency, setRegCurrency] = useState('USD');
   // Details waiting for the emailed code before the account is really created
   const [pendingSignup, setPendingSignup] = useState(false);
+  // A login that needs an emailed code first: a device we have not seen, or an old on-device-only account moving online
+  const [deviceCheck, setDeviceCheck] = useState<{ kind: 'device' | 'migrate'; identifier: string; pin: string; email: string; name: string } | null>(null);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -99,13 +103,77 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       return;
     }
 
-    const res = login(loginUsername, loginPin);
-    if (!res.success) {
-      setErrorMsg(res.error || 'Invalid credentials.');
+    void signIn(loginUsername, loginPin);
+  };
+
+  /** Finishes the log in from this browser's copy (which the online check has just refreshed). */
+  const finishLocalLogin = (identifier: string, pin: string): string | null => {
+    const res = login(identifier, pin);
+    if (!res.success) return res.error || 'Invalid credentials.';
+    applyRemember(authService.findUser(identifier)?.id);
+    if (onSuccess) onSuccess();
+    return null;
+  };
+
+  const signIn = async (identifier: string, pin: string) => {
+    setBusy(true);
+    const online = await cloudLogin(identifier, pin);
+    if (online.kind === 'ok' || online.kind === 'offline') {
+      setBusy(false);
+      const problem = finishLocalLogin(identifier, pin);
+      if (problem) setErrorMsg(problem);
       return;
     }
-    applyRemember(authService.findUser(loginUsername)?.id);
-    if (onSuccess) onSuccess();
+    if (online.kind === 'error') {
+      setBusy(false);
+      setErrorMsg(online.error);
+      return;
+    }
+    if (online.kind === 'new-device') {
+      const sent = await sendSignupCode(online.email, online.name);
+      setBusy(false);
+      if (!sent.ok) { setErrorMsg(sent.error ?? 'Could not send the verification email.'); return; }
+      setDeviceCheck({ kind: 'device', identifier, pin, email: online.email, name: online.name });
+      return;
+    }
+    // Not online yet: an account made before multi-device support lives only in this browser
+    const local = authService.checkCredentials(identifier, pin);
+    if (!local.success || !local.user) {
+      setBusy(false);
+      setErrorMsg(local.error ?? 'Account not found.');
+      return;
+    }
+    if (!local.user.email || !cloudEnabled()) {
+      setBusy(false);
+      const problem = finishLocalLogin(identifier, pin);
+      if (problem) setErrorMsg(problem);
+      return;
+    }
+    const sent = await sendSignupCode(local.user.email, local.user.name);
+    setBusy(false);
+    if (!sent.ok) {
+      const problem = finishLocalLogin(identifier, pin);
+      if (problem) setErrorMsg(problem);
+      return;
+    }
+    setDeviceCheck({ kind: 'migrate', identifier, pin, email: local.user.email, name: local.user.name });
+  };
+
+  const finishDeviceCheck = async (): Promise<string | void> => {
+    if (!deviceCheck) return;
+    const { kind, identifier, pin } = deviceCheck;
+    if (kind === 'device') {
+      const again = await cloudLogin(identifier, pin, true);
+      if (again.kind !== 'ok') return again.kind === 'error' ? again.error : 'Could not finish the log in. Please try again.';
+    } else {
+      const user = authService.findUser(identifier);
+      if (!user) return 'Account not found.';
+      const moved = await cloudRegister(user);
+      if (!moved.ok) return moved.error ?? 'Could not move your account online.';
+    }
+    const problem = finishLocalLogin(identifier, pin);
+    if (problem) return problem;
+    setDeviceCheck(null);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -119,6 +187,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       return;
     }
     setBusy(true);
+    const free = await checkAvailable(regUsername, regEmail);
+    if (!free.ok && !free.offline) {
+      setBusy(false);
+      setErrorMsg(free.error ?? 'That username or email is taken.');
+      return;
+    }
     const real = await checkEmailIsReal(regEmail);
     setBusy(false);
     if (!real.ok) {
@@ -138,14 +212,23 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
     setPendingSignup(true);
   };
 
-  const finishRegistration = () => {
+  const finishRegistration = async (): Promise<string | void> => {
     const res = register(regName, regUsername, regEmail, regPin, regCurrency);
-    if (!res.success) {
+    if (!res.success || !res.user) {
       setPendingSignup(false);
       setErrorMsg(res.error || 'Could not create account.');
       return;
     }
-    applyRemember(authService.findUser(regUsername)?.id);
+    // Save it online too, so it can be used on any other device
+    const online = await cloudRegister(res.user);
+    if (!online.ok) {
+      logout();
+      authService.deleteAccount(res.user.id);
+      setPendingSignup(false);
+      setErrorMsg(online.error ?? 'Could not create the account online. Please try again.');
+      return;
+    }
+    applyRemember(res.user.id);
     if (onSuccess) onSuccess();
   };
 
@@ -215,7 +298,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         )}
 
         {/* ── Log In Form ──────────────────────────────────────────────── */}
-        {pendingSignup ? (
+        {deviceCheck ? (
+          <VerifyEmailForm
+            email={deviceCheck.email}
+            name={deviceCheck.name}
+            onVerified={finishDeviceCheck}
+            onBack={() => setDeviceCheck(null)}
+            intro={deviceCheck.kind === 'device' ? 'This is a new device, so please confirm it is you before we log you in.' : 'We are moving your account online so it works on all your devices. Enter the code to confirm your email.'}
+            submitLabel="Verify & Log In"
+            backLabel="Back to log in"
+            onSkip={deviceCheck.kind === 'migrate' ? () => { const p = finishLocalLogin(deviceCheck.identifier, deviceCheck.pin); if (p) setErrorMsg(p); else setDeviceCheck(null); } : undefined}
+          />
+        ) : pendingSignup ? (
           <VerifyEmailForm
             email={regEmail}
             name={regName}
@@ -263,7 +357,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   <KeyRound className="w-4 h-4" />
                 </div>
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   placeholder="Enter your 4-digit PIN"
                   autoComplete="current-password"
                   autoFocus={!!rememberedUser}
@@ -272,6 +366,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
               </div>
+              <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                <input type="checkbox" checked={showPin} onChange={(e) => setShowPin(e.target.checked)} className="accent-emerald-600" />
+                <span>Show password</span>
+              </label>
             </div>
 
             <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer select-none">
@@ -419,7 +517,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   <KeyRound className="w-4 h-4" />
                 </div>
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   placeholder="e.g. 1234"
                   autoComplete="new-password"
                   value={regPin}
@@ -427,6 +525,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
               </div>
+              <label className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                <input type="checkbox" checked={showPin} onChange={(e) => setShowPin(e.target.checked)} className="accent-emerald-600" />
+                <span>Show password</span>
+              </label>
             </div>
 
             <div>

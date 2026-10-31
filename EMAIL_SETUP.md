@@ -62,3 +62,13 @@ Click **Deploy → Manage deployments → pencil icon → Version: New version �
 - Accounts still live in each person's browser. The email only proves the person can read the inbox
   before the PIN on that browser is changed.
 - Accounts with no email on file cannot use it; the admin resets their PIN.
+
+## Accounts on every device (needs a one-time update of the script)
+
+The same script now also stores accounts and ledgers, as small JSON files in the Google Drive of the account that owns the script, so a user can log in from any device.
+
+1. Paste the new `google-apps-script/Code.gs` over the old code and save.
+2. Select `authorizeOnce` in the function dropdown and press **Run**. Google will now also ask for **Drive** access: allow it.
+3. **Deploy → Manage deployments → pencil icon → Version: New version → Deploy.** The web app URL stays the same.
+
+Until this is done, sign-up and log in will show an error because the script cannot store accounts yet.
